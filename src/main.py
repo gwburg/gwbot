@@ -19,12 +19,32 @@ def create_client():
     return client
 
 
+def _fmt_args(args: dict, max_len: int = 60) -> str:
+    parts = []
+    for k, v in args.items():
+        if isinstance(v, str) and len(v) > max_len:
+            parts.append(f"{k}=<{len(v)} chars>")
+        else:
+            parts.append(f"{k}={v!r}")
+    return ", ".join(parts)
+
+
+def log_step(llm_message):
+    if llm_message.content:
+        print(f"[assistant] {llm_message.content}")
+    for tool_call in llm_message.tool_calls or []:
+        args = json.loads(tool_call.function.arguments)
+        print(f"[tool] {tool_call.function.name}({_fmt_args(args)})")
+
+
 def agent_loop(client, model, messages, tools):
     while True:
         # append LLM message to context
         response = call_llm(client, model, messages, tools)
         llm_message = response.choices[0].message
         messages.append(llm_message.to_dict())
+
+        log_step(llm_message)
 
         # end agentic loop if no tool calls are made
         if not llm_message.tool_calls:
@@ -61,9 +81,9 @@ def execute_tool(tool_call):
 
 
 if __name__ == "__main__":
-    model = models.GEMINI
+    model = models.MINIMAX
     client = create_client()
-    task = "What are the titles of some James Joyce books?"
+    task = "Read all the .py files in the current repo and write a .md file summarizing what this repo does"
     messages = [
             {
         "role": "system",
@@ -75,5 +95,4 @@ if __name__ == "__main__":
         }
                 ]
 
-    final_message = agent_loop(client, model, messages, tools)
-    print(final_message)
+    agent_loop(client, model, messages, tools)
