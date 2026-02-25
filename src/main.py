@@ -15,7 +15,7 @@ from tenacity import (
 )
 
 import models
-from tools import tools, TOOL_MAPPING
+from tools import TOOL_MAPPING, tools
 
 load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -49,6 +49,7 @@ def fetch_model_info(model: str) -> dict:
 # Logging
 # ---------------------------------------------------------------------------
 
+
 def _log_writer(path: str | None):
     """Return a write_log(type, **data) function. No-op if path is None."""
     if path is None:
@@ -67,6 +68,7 @@ def _log_writer(path: str | None):
 # ---------------------------------------------------------------------------
 # Console output
 # ---------------------------------------------------------------------------
+
 
 def _fmt_args(args: dict, max_len: int = 60) -> str:
     parts = []
@@ -87,8 +89,9 @@ def log_step(llm_message):
 
 
 # ---------------------------------------------------------------------------
-# Agent loop
+# Agentic loop
 # ---------------------------------------------------------------------------
+
 
 def agent_loop(client, model, messages, tools, max_iterations=50, log_path=None):
     model_info = fetch_model_info(model)
@@ -98,7 +101,7 @@ def agent_loop(client, model, messages, tools, max_iterations=50, log_path=None)
     total_prompt_tokens = 0
     total_completion_tokens = 0
 
-    for iteration in range(max_iterations):
+    for _ in range(max_iterations):
         response = call_llm(client, model, messages, tools)
         llm_message = response.choices[0].message
         messages.append(llm_message.to_dict())
@@ -139,15 +142,8 @@ def agent_loop(client, model, messages, tools, max_iterations=50, log_path=None)
     else:
         print(f"[warning] reached max iterations ({max_iterations})")
 
-    cost = (
-        total_prompt_tokens * model_info["prompt_price"]
-        + total_completion_tokens * model_info["completion_price"]
-    )
-    print(
-        f"[usage] prompt={total_prompt_tokens} "
-        f"completion={total_completion_tokens} "
-        f"cost=${cost:.4f}"
-    )
+    cost = total_prompt_tokens * model_info["prompt_price"] + total_completion_tokens * model_info["completion_price"]
+    print(f"[usage] prompt={total_prompt_tokens} completion={total_completion_tokens} cost=${cost:.4f}")
     write_log(
         "run_end",
         prompt_tokens=total_prompt_tokens,
@@ -161,11 +157,13 @@ def agent_loop(client, model, messages, tools, max_iterations=50, log_path=None)
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=4, max=60),
-    retry=retry_if_exception_type((
-        openai.RateLimitError,
-        openai.APIConnectionError,
-        openai.InternalServerError,
-    )),
+    retry=retry_if_exception_type(
+        (
+            openai.RateLimitError,
+            openai.APIConnectionError,
+            openai.InternalServerError,
+        )
+    ),
     reraise=True,
 )
 def call_llm(client, model, messages, tools):
@@ -196,8 +194,10 @@ def execute_tool(tool_call):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run an agent loop")
-    parser.add_argument("task", nargs="?",
-                        default="Read all the .py files in the current repo and write a SUMMARY.md file summarizing what this repo does")
+    default_task = (
+        "Read all the .py files in the current repo and write a SUMMARY.md file summarizing what this repo does"
+    )
+    parser.add_argument("task", nargs="?", default=default_task)
     parser.add_argument("--model", default=models.SONNET)
     parser.add_argument("--system-prompt", default="You are a helpful assistant.")
     parser.add_argument("--max-iterations", type=int, default=50)
@@ -211,7 +211,10 @@ if __name__ == "__main__":
     ]
 
     agent_loop(
-        client, args.model, messages, tools,
+        client,
+        args.model,
+        messages,
+        tools,
         max_iterations=args.max_iterations,
         log_path=args.log,
     )

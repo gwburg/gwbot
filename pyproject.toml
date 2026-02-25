@@ -10,3 +10,6 @@ dependencies = [
     "requests>=2.32.5",
     "tenacity>=9.1.4",
 ]
+
+[tool.ruff]
+line-length = 200

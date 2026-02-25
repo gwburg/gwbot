@@ -28,7 +28,7 @@ def _check_blocked(command: str) -> str | None:
     return None
 
 
-def _truncate(text: str, label: str) -> tuple[str, bool]:
+def _truncate(text: str) -> tuple[str, bool]:
     if len(text) <= MAX_OUTPUT_CHARS:
         return text, False
     return text[:MAX_OUTPUT_CHARS], True
@@ -55,13 +55,13 @@ def bash(command: str, timeout: int = DEFAULT_TIMEOUT) -> str:
     parts = [f"Exit code: {result.returncode}"]
 
     if result.stdout:
-        stdout, truncated = _truncate(result.stdout, "stdout")
+        stdout, truncated = _truncate(result.stdout)
         parts.append(f"stdout:\n{stdout}")
         if truncated:
             parts.append(f"[stdout truncated at {MAX_OUTPUT_CHARS} chars]")
 
     if result.stderr:
-        stderr, truncated = _truncate(result.stderr, "stderr")
+        stderr, truncated = _truncate(result.stderr)
         parts.append(f"stderr:\n{stderr}")
         if truncated:
             parts.append(f"[stderr truncated at {MAX_OUTPUT_CHARS} chars]")
