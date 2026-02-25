@@ -198,7 +198,9 @@ if __name__ == "__main__":
         "Read all the .py files in the current repo and write a SUMMARY.md file summarizing what this repo does"
     )
     parser.add_argument("task", nargs="?", default=default_task)
-    parser.add_argument("--model", default=models.SONNET)
+    model_map = {k: v for k, v in vars(models).items() if not k.startswith("_")}
+    parser.add_argument("--model", default="MINIMAX", choices=model_map,
+                        metavar="MODEL", help=f"Model alias. Choices: {', '.join(model_map)}")
     parser.add_argument("--system-prompt", default="You are a helpful assistant.")
     parser.add_argument("--max-iterations", type=int, default=50)
     parser.add_argument("--log", metavar="PATH", help="Write a JSONL log to this file")
@@ -212,7 +214,7 @@ if __name__ == "__main__":
 
     agent_loop(
         client,
-        args.model,
+        model_map[args.model],
         messages,
         tools,
         max_iterations=args.max_iterations,
