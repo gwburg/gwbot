@@ -72,6 +72,7 @@ class AgentApp(App):
         self._spinner_widget: Static | None = None
         self._spinner_frame = 0
         self._tool_widgets: list[tuple[Static, str, dict]] = []  # (widget, name, args)
+        self._has_agent_label = False  # whether [agent] label has been mounted this turn
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -192,8 +193,10 @@ class AgentApp(App):
             case StreamStart():
                 self._hide_spinner()
                 self._close_tool_group()
-                # Always mount the [agent] label
-                self._append_widget(f"[{C_AGENT}]\\[agent][/]", classes="agent-label")
+                # Mount [agent] label if not already shown this turn
+                if not self._has_agent_label:
+                    self._append_widget(f"[{C_AGENT}]\\[agent][/]", classes="agent-label")
+                self._has_agent_label = True
                 # Mount the content widget for streaming
                 self._streaming_parts = []
                 self._streaming_widget = self._append_widget("", classes="message agent-content")
@@ -209,15 +212,18 @@ class AgentApp(App):
                         self._streaming_widget.update(Markdown(content))
                         self._streaming_widget.scroll_visible(animate=False)
                     else:
-                        # No text content (tool-only turn) — remove the empty widget
                         self._streaming_widget.remove()
                 self._streaming_widget = None
                 self._streaming_parts = []
-                # Show spinner while tools execute / next LLM call prepares
+                self._has_agent_label = False
                 self._show_spinner()
 
             case ToolCallEvent(name=name, args=args):
                 self._hide_spinner()
+                # Mount [agent] label if tools arrive without a preceding stream
+                if not self._has_agent_label:
+                    self._append_widget(f"[{C_AGENT}]\\[agent][/]", classes="agent-label")
+                    self._has_agent_label = True
                 widget = self._append_widget(
                     self._render_tool("├─", name, args), classes="message tool-group"
                 )
@@ -239,6 +245,7 @@ class AgentApp(App):
             case RunEndEvent():
                 self._hide_spinner()
                 self._close_tool_group()
+                self._has_agent_label = False
 
     def _flush_stream(self) -> None:
         """Periodically update the streaming widget with accumulated text."""

@@ -258,8 +258,7 @@ async def call_llm(client, model, messages, tools, on_event: Callable[[AgentEven
     content_parts = []
     tool_calls_acc = {}
     usage = None
-
-    _emit(on_event, StreamStart())
+    stream_started = False
 
     stream = await client.chat.completions.create(
         model=model,
@@ -275,6 +274,9 @@ async def call_llm(client, model, messages, tools, on_event: Callable[[AgentEven
             continue
         delta = chunk.choices[0].delta
         if delta.content:
+            if not stream_started:
+                _emit(on_event, StreamStart())
+                stream_started = True
             content_parts.append(delta.content)
             _emit(on_event, StreamChunk(text=delta.content))
         if delta.tool_calls:
@@ -293,7 +295,8 @@ async def call_llm(client, model, messages, tools, on_event: Callable[[AgentEven
     content = "".join(content_parts) or None
     tool_calls = [tool_calls_acc[i] for i in sorted(tool_calls_acc)] or None
 
-    _emit(on_event, StreamEnd(content=content))
+    if stream_started:
+        _emit(on_event, StreamEnd(content=content))
 
     return content, tool_calls, usage
 
