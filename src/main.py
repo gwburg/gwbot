@@ -291,7 +291,7 @@ if __name__ == "__main__":
             prefill = args.task or ""
             while True:
                 try:
-                    user_input = await asyncio.to_thread(chat_input, prefill)
+                    user_input = chat_input(prefill)
                     prefill = ""
                 except (EOFError, KeyboardInterrupt):
                     print()
