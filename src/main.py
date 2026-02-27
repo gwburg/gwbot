@@ -255,12 +255,24 @@ async def execute_tool(tool_call: dict) -> dict:
     }
 
 
+def chat_input(prefill: str = "") -> str:
+    """Read a line of input, optionally pre-filling with text for editing."""
+    if prefill:
+        try:
+            import readline
+            readline.set_startup_hook(lambda: readline.insert_text(prefill))
+            try:
+                return input("[user] ")
+            finally:
+                readline.set_startup_hook()
+        except ImportError:
+            pass
+    return input("[user] ")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run an agent loop")
-    default_task = (
-        "Tell me about yourself"
-    )
-    parser.add_argument("task", nargs="?", default=default_task)
+    parser.add_argument("task", nargs="?", default=None, help="Initial task (omit to be prompted in --chat mode)")
     model_map = {k: v for k, v in vars(models).items() if not k.startswith("_")}
     parser.add_argument("--model", default="MINIMAX", choices=model_map,
                         metavar="MODEL", help=f"Model alias. Choices: {', '.join(model_map)}")
@@ -268,19 +280,43 @@ if __name__ == "__main__":
                         default="You are a helpful, personal assistant, who can do a variety of general purpose tasks based on the tools provided to you")
     parser.add_argument("--max-iterations", type=int, default=50)
     parser.add_argument("--log", metavar="PATH", help="Write a JSONL log to this file")
+    parser.add_argument("--chat", action="store_true", help="Interactive chat: prompt for each message, looping until empty input or Ctrl+C")
     args = parser.parse_args()
 
     client = create_client()
-    messages = [
-        {"role": "system", "content": args.system_prompt},
-        {"role": "user", "content": args.task},
-    ]
+    messages = [{"role": "system", "content": args.system_prompt}]
 
-    asyncio.run(agent_loop(
-        client,
-        model_map[args.model],
-        messages,
-        tools,
-        max_iterations=args.max_iterations,
-        log_path=args.log,
-    ))
+    async def main():
+        if args.chat:
+            prefill = args.task or ""
+            while True:
+                try:
+                    user_input = await asyncio.to_thread(chat_input, prefill)
+                    prefill = ""
+                except (EOFError, KeyboardInterrupt):
+                    print()
+                    break
+                if not user_input.strip():
+                    break
+                messages.append({"role": "user", "content": user_input})
+                await agent_loop(
+                    client,
+                    model_map[args.model],
+                    messages,
+                    tools,
+                    max_iterations=args.max_iterations,
+                    log_path=args.log,
+                )
+        else:
+            task = args.task or "Tell me about yourself"
+            messages.append({"role": "user", "content": task})
+            await agent_loop(
+                client,
+                model_map[args.model],
+                messages,
+                tools,
+                max_iterations=args.max_iterations,
+                log_path=args.log,
+            )
+
+    asyncio.run(main())
