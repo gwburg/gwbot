@@ -34,6 +34,8 @@ C_TOOL = "#f9e2af"
 C_WARN = "#f38ba8"
 C_DIM = "#6c7086"
 
+SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
 
 class AgentMessage(Message):
     """Wraps an AgentEvent for Textual's message system."""
@@ -68,6 +70,8 @@ class AgentApp(App):
         self._pending_tools: list[tuple[str, dict]] = []
         self._is_running = False
         self._msg_counter = 0
+        self._spinner_widget: Static | None = None
+        self._spinner_frame = 0
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -80,6 +84,7 @@ class AgentApp(App):
         status = self.query_one(StatusBar)
         status.model_name = self.model_id
         self._stream_timer = self.set_interval(0.05, self._flush_stream, pause=True)
+        self._spinner_timer = self.set_interval(0.08, self._tick_spinner, pause=True)
         if self.initial_task:
             self._submit_message(self.initial_task)
         else:
@@ -96,6 +101,29 @@ class AgentApp(App):
         scroll.mount(widget)
         widget.scroll_visible(animate=False)
         return widget
+
+    def _show_spinner(self) -> None:
+        """Mount and start the spinner animation."""
+        if self._spinner_widget:
+            return
+        self._spinner_frame = 0
+        self._spinner_widget = self._append_widget(
+            f"[{C_DIM}]{SPINNER[0]}[/]", classes="message spinner"
+        )
+        self._spinner_timer.resume()
+
+    def _hide_spinner(self) -> None:
+        """Remove the spinner widget and stop the timer."""
+        self._spinner_timer.pause()
+        if self._spinner_widget:
+            self._spinner_widget.remove()
+            self._spinner_widget = None
+
+    def _tick_spinner(self) -> None:
+        """Advance the spinner animation by one frame."""
+        if self._spinner_widget:
+            self._spinner_frame = (self._spinner_frame + 1) % len(SPINNER)
+            self._spinner_widget.update(f"[{C_DIM}]{SPINNER[self._spinner_frame]}[/]")
 
     def _mount_input(self) -> None:
         """Mount a new inline [user] prompt with Input inside the chat scroll."""
@@ -125,6 +153,7 @@ class AgentApp(App):
 
         self.messages.append({"role": "user", "content": text})
         self._is_running = True
+        self._show_spinner()
         self.run_worker(self._run_agent(), exclusive=True)
 
     async def _run_agent(self) -> None:
@@ -139,6 +168,7 @@ class AgentApp(App):
                 on_event=lambda e: self.post_message(AgentMessage(e)),
             )
         except Exception as e:
+            self._hide_spinner()
             self._append_widget(f"[{C_WARN}]\\[error][/] {e}")
         finally:
             self._is_running = False
@@ -161,6 +191,7 @@ class AgentApp(App):
 
         match event:
             case StreamStart():
+                self._hide_spinner()
                 # Flush any tools from the previous turn
                 self._flush_pending_tools()
                 # Always mount the [agent] label
@@ -178,12 +209,14 @@ class AgentApp(App):
                 if self._streaming_widget:
                     if content:
                         self._streaming_widget.update(Markdown(content))
+                        self._streaming_widget.scroll_visible(animate=False)
                     else:
                         # No text content (tool-only turn) — remove the empty widget
                         self._streaming_widget.remove()
-                    self._streaming_widget.scroll_visible(animate=False) if content else None
                 self._streaming_widget = None
                 self._streaming_parts = []
+                # Show spinner while tools execute / next LLM call prepares
+                self._show_spinner()
 
             case ToolCallEvent(name=name, args=args):
                 self._pending_tools.append((name, args))
@@ -201,6 +234,7 @@ class AgentApp(App):
                 self._append_widget(f"[{C_WARN}]\\[warning][/] {msg}")
 
             case RunEndEvent():
+                self._hide_spinner()
                 self._flush_pending_tools()
 
     def _flush_stream(self) -> None:
