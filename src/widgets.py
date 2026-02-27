@@ -23,11 +23,11 @@ class StatusBar(Static):
             bar_width = 20
             filled = int(pct / 100 * bar_width)
             if pct >= 80:
-                color = "red"
+                color = "#f38ba8"
             elif pct >= 50:
-                color = "yellow"
+                color = "#f9e2af"
             else:
-                color = "green"
+                color = "#a6e3a1"
             bar = f"[{color}]{'█' * filled}{'░' * (bar_width - filled)}[/{color}] {pct:.0f}%"
             parts.append(f"Context: {bar}")
         return Text.from_markup(" | ".join(parts))

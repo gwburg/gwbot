@@ -18,13 +18,21 @@ Screen {
     margin: 1 0 0 0;
 }
 
-.agent-msg {
+.agent-label {
+    width: 100%;
+    height: auto;
+    padding: 0 1;
     margin: 1 0 0 0;
 }
 
+.agent-content {
+    padding: 0 1 0 3;
+    margin: 0;
+}
+
 .tool-group {
-    margin: 0 0 0 2;
-    color: $text-muted;
+    padding: 0 1 0 5;
+    margin: 0;
 }
 
 #input-row {
