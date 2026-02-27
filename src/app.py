@@ -207,7 +207,7 @@ class AgentApp(App):
         """Periodically update the streaming widget with accumulated text."""
         if self._streaming_parts and self._streaming_widget:
             full_text = "".join(self._streaming_parts)
-            self._streaming_widget.update(full_text)
+            self._streaming_widget.update(Markdown(full_text))
             self._streaming_widget.scroll_visible(animate=False)
 
     def action_switch_model(self) -> None:
