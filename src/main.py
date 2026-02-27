@@ -254,21 +254,7 @@ async def execute_tool(tool_call: dict) -> dict:
     }
 
 
-def chat_input(prefill: str = "") -> str:
-    """Read a line of input, optionally pre-filling with text for editing."""
-    if prefill:
-        try:
-            import readline
-            def hook():
-                readline.insert_text(prefill)
-                readline.redisplay()
-            readline.set_pre_input_hook(hook)
-            try:
-                return input("[user] ")
-            finally:
-                readline.set_pre_input_hook(None)
-        except (ImportError, AttributeError):
-            pass
+def chat_input() -> str:
     return input("[user] ")
 
 
@@ -288,25 +274,32 @@ if __name__ == "__main__":
     client = create_client()
     messages = [{"role": "system", "content": args.system_prompt}]
 
+    async def run_turn(user_input):
+        messages.append({"role": "user", "content": user_input})
+        await agent_loop(
+            client,
+            model_map[args.model],
+            messages,
+            tools,
+            max_iterations=args.max_iterations,
+            log_path=args.log,
+        )
+
     async def main():
         if args.chat:
-            prefill = args.task or ""
+            # If a task was provided on the command line, send it directly
+            if args.task:
+                print(f"\n[user] {args.task}\n")
+                await run_turn(args.task)
+
             while True:
                 try:
                     print()
-                    user_input = chat_input(prefill)
-                    prefill = ""
+                    user_input = chat_input()
                     if not user_input.strip():
                         break
-                    messages.append({"role": "user", "content": user_input})
-                    await agent_loop(
-                        client,
-                        model_map[args.model],
-                        messages,
-                        tools,
-                        max_iterations=args.max_iterations,
-                        log_path=args.log,
-                    )
+                    print()
+                    await run_turn(user_input)
                 except (EOFError, KeyboardInterrupt):
                     print()
                     break
@@ -322,4 +315,7 @@ if __name__ == "__main__":
                 log_path=args.log,
             )
 
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print()
