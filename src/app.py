@@ -15,10 +15,12 @@ from agent import (
     agent_loop,
     create_client,
 )
+from rich.markdown import Markdown
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.containers import VerticalScroll
 from textual.message import Message
-from textual.widgets import Footer, Header, Input, RichLog, Static
+from textual.widgets import Footer, Header, Input, Static
 from tools import tools
 
 from widgets import ModelSelector, StatusBar
@@ -55,12 +57,13 @@ class AgentApp(App):
         self.client = create_client()
         self.messages: list[dict] = [{"role": "system", "content": system_prompt}]
         self._streaming_parts: list[str] = []
+        self._streaming_widget: Static | None = None
         self._is_running = False
+        self._msg_counter = 0
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield RichLog(id="chat-log", wrap=True, highlight=True, markup=True)
-        yield Static(id="streaming-text")
+        yield VerticalScroll(id="chat-scroll")
         yield StatusBar(id="status-bar")
         yield Input(placeholder="Type a message...", id="user-input")
         yield Footer()
@@ -80,12 +83,23 @@ class AgentApp(App):
         event.input.clear()
         self._submit_message(text)
 
+    def _next_msg_id(self) -> str:
+        self._msg_counter += 1
+        return f"msg-{self._msg_counter}"
+
+    def _append_message(self, content: str, msg_id: str | None = None) -> Static:
+        """Mount a new Static widget into the chat scroll area."""
+        scroll = self.query_one("#chat-scroll", VerticalScroll)
+        widget = Static(content, id=msg_id or self._next_msg_id(), classes="message")
+        scroll.mount(widget)
+        widget.scroll_visible(animate=False)
+        return widget
+
     def _submit_message(self, text: str) -> None:
         if self._is_running:
             return
 
-        chat_log = self.query_one("#chat-log", RichLog)
-        chat_log.write(f"[bold cyan]\\[user][/] {text}")
+        self._append_message(f"[bold cyan]> {text}[/]")
 
         self.messages.append({"role": "user", "content": text})
         self._is_running = True
@@ -104,8 +118,7 @@ class AgentApp(App):
                 on_event=lambda e: self.post_message(AgentMessage(e)),
             )
         except Exception as e:
-            chat_log = self.query_one("#chat-log", RichLog)
-            chat_log.write(f"[bold red]\\[error][/] {e}")
+            self._append_message(f"[bold red]\\[error] {e}[/]")
         finally:
             self._is_running = False
             input_widget = self.query_one("#user-input", Input)
@@ -114,14 +127,11 @@ class AgentApp(App):
 
     def on_agent_message(self, message: AgentMessage) -> None:
         event = message.event
-        chat_log = self.query_one("#chat-log", RichLog)
-        streaming = self.query_one("#streaming-text", Static)
 
         match event:
             case StreamStart():
                 self._streaming_parts = []
-                streaming.update("[bold green]\\[assistant][/] ")
-                streaming.display = True
+                self._streaming_widget = self._append_message("")
                 self._stream_timer.resume()
 
             case StreamChunk(text=text):
@@ -129,16 +139,14 @@ class AgentApp(App):
 
             case StreamEnd(content=content):
                 self._stream_timer.pause()
-                streaming.display = False
-                streaming.update("")
-                if content:
-                    from rich.markdown import Markdown
-                    chat_log.write(Markdown(content))
-                    chat_log.scroll_end(animate=False)
+                if self._streaming_widget and content:
+                    self._streaming_widget.update(Markdown(content))
+                    self._streaming_widget.scroll_visible(animate=False)
+                self._streaming_widget = None
+                self._streaming_parts = []
 
             case ToolCallEvent(name=name, args=args):
-                chat_log.write(f"[dim yellow]  \\[tool] {name}({_fmt_args(args)})[/]")
-                chat_log.scroll_end(animate=False)
+                self._append_message(f"[dim yellow]  \\[tool] {name}({_fmt_args(args)})[/]")
 
             case ToolResultEvent():
                 pass
@@ -150,17 +158,16 @@ class AgentApp(App):
                 status.context_pct = e.context_pct
 
             case WarningEvent(message=msg):
-                chat_log.write(f"[bold red]  \\[warning] {msg}[/]")
-                chat_log.scroll_end(animate=False)
+                self._append_message(f"[bold red]  \\[warning] {msg}[/]")
 
             case RunEndEvent():
                 pass
 
     def _flush_stream(self) -> None:
-        if self._streaming_parts:
-            streaming = self.query_one("#streaming-text", Static)
+        if self._streaming_parts and self._streaming_widget:
             full_text = "".join(self._streaming_parts)
-            streaming.update(f"[bold green]\\[assistant][/] {full_text}")
+            self._streaming_widget.update(full_text)
+            self._streaming_widget.scroll_visible(animate=False)
 
     def action_switch_model(self) -> None:
         if self._is_running:

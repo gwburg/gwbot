@@ -2,18 +2,15 @@ Screen {
     layout: vertical;
 }
 
-#chat-log {
+#chat-scroll {
     height: 1fr;
-    border: solid $primary;
     scrollbar-size: 1 1;
 }
 
-#streaming-text {
+.message {
+    width: 100%;
     height: auto;
-    max-height: 12;
     padding: 0 1;
-    color: $text;
-    display: none;
 }
 
 #status-bar {
@@ -25,6 +22,15 @@ Screen {
 
 #user-input {
     margin: 0;
+    border: none;
+    height: auto;
+    min-height: 1;
+    padding: 0 1;
+    background: transparent;
+}
+
+#user-input:focus {
+    border: none;
 }
 
 ModelSelector {
