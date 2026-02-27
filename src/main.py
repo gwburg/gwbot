@@ -124,7 +124,7 @@ async def agent_loop(client, model, messages, tools, max_iterations=50, log_path
             "llm",
             content=content,
             tool_calls=[
-                {"name": tc["function"]["name"], "args": json.loads(tc["function"]["arguments"])}
+                {"name": tc["function"]["name"], "args": json.loads(tc["function"]["arguments"] or "{}")}
                 for tc in (tool_calls or [])
             ],
             usage={"prompt": usage.prompt_tokens, "completion": usage.completion_tokens} if usage else None,
