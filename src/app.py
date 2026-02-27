@@ -65,7 +65,6 @@ class AgentApp(App):
         yield Header()
         yield VerticalScroll(id="chat-scroll")
         yield StatusBar(id="status-bar")
-        yield Input(placeholder="Type a message...", id="user-input")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -75,19 +74,14 @@ class AgentApp(App):
         self._stream_timer = self.set_interval(0.05, self._flush_stream, pause=True)
         if self.initial_task:
             self._submit_message(self.initial_task)
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        text = event.value.strip()
-        if not text:
-            return
-        event.input.clear()
-        self._submit_message(text)
+        else:
+            self._mount_input()
 
     def _next_msg_id(self) -> str:
         self._msg_counter += 1
         return f"msg-{self._msg_counter}"
 
-    def _append_message(self, content: str, msg_id: str | None = None) -> Static:
+    def _append_message(self, content, msg_id: str | None = None) -> Static:
         """Mount a new Static widget into the chat scroll area."""
         scroll = self.query_one("#chat-scroll", VerticalScroll)
         widget = Static(content, id=msg_id or self._next_msg_id(), classes="message")
@@ -95,15 +89,30 @@ class AgentApp(App):
         widget.scroll_visible(animate=False)
         return widget
 
+    def _mount_input(self) -> None:
+        """Mount a new inline Input at the bottom of the chat scroll."""
+        scroll = self.query_one("#chat-scroll", VerticalScroll)
+        input_widget = Input(id="user-input")
+        scroll.mount(input_widget)
+        input_widget.scroll_visible(animate=False)
+        input_widget.focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        text = event.value.strip()
+        if not text:
+            return
+        # Remove the input widget, replace with the static user message
+        event.input.remove()
+        self._submit_message(text)
+
     def _submit_message(self, text: str) -> None:
         if self._is_running:
             return
 
-        self._append_message(f"[bold cyan]> {text}[/]")
+        self._append_message(f"[bold cyan]\\[user][/] {text}")
 
         self.messages.append({"role": "user", "content": text})
         self._is_running = True
-        self.query_one("#user-input", Input).disabled = True
         self.run_worker(self._run_agent(), exclusive=True)
 
     async def _run_agent(self) -> None:
@@ -118,12 +127,10 @@ class AgentApp(App):
                 on_event=lambda e: self.post_message(AgentMessage(e)),
             )
         except Exception as e:
-            self._append_message(f"[bold red]\\[error] {e}[/]")
+            self._append_message(f"[bold red]\\[error][/] {e}")
         finally:
             self._is_running = False
-            input_widget = self.query_one("#user-input", Input)
-            input_widget.disabled = False
-            input_widget.focus()
+            self._mount_input()
 
     def on_agent_message(self, message: AgentMessage) -> None:
         event = message.event
@@ -146,7 +153,7 @@ class AgentApp(App):
                 self._streaming_parts = []
 
             case ToolCallEvent(name=name, args=args):
-                self._append_message(f"[dim yellow]  \\[tool] {name}({_fmt_args(args)})[/]")
+                self._append_message(f"[bold yellow]\\[tool][/] {name}({_fmt_args(args)})")
 
             case ToolResultEvent():
                 pass
@@ -158,7 +165,7 @@ class AgentApp(App):
                 status.context_pct = e.context_pct
 
             case WarningEvent(message=msg):
-                self._append_message(f"[bold red]  \\[warning] {msg}[/]")
+                self._append_message(f"[bold red]\\[warning][/] {msg}")
 
             case RunEndEvent():
                 pass
@@ -166,7 +173,7 @@ class AgentApp(App):
     def _flush_stream(self) -> None:
         if self._streaming_parts and self._streaming_widget:
             full_text = "".join(self._streaming_parts)
-            self._streaming_widget.update(full_text)
+            self._streaming_widget.update(f"[bold green]\\[agent][/] {full_text}")
             self._streaming_widget.scroll_visible(animate=False)
 
     def action_switch_model(self) -> None:

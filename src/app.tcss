@@ -13,24 +13,25 @@ Screen {
     padding: 0 1;
 }
 
-#status-bar {
-    height: 1;
-    background: $surface;
-    color: $text-muted;
-    padding: 0 1;
-}
-
 #user-input {
-    margin: 0;
-    border: none;
+    width: 100%;
     height: auto;
     min-height: 1;
+    margin: 0;
     padding: 0 1;
+    border: none;
     background: transparent;
 }
 
 #user-input:focus {
     border: none;
+}
+
+#status-bar {
+    height: 1;
+    background: $surface;
+    color: $text-muted;
+    padding: 0 1;
 }
 
 ModelSelector {
