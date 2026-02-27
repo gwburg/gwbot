@@ -15,10 +15,9 @@ from agent import (
     agent_loop,
     create_client,
 )
-from rich.markdown import Markdown
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import VerticalScroll
+from textual.containers import Horizontal, VerticalScroll
 from textual.message import Message
 from textual.widgets import Footer, Header, Input, Static
 from tools import tools
@@ -58,6 +57,7 @@ class AgentApp(App):
         self.messages: list[dict] = [{"role": "system", "content": system_prompt}]
         self._streaming_parts: list[str] = []
         self._streaming_widget: Static | None = None
+        self._pending_tools: list[tuple[str, dict]] = []
         self._is_running = False
         self._msg_counter = 0
 
@@ -81,35 +81,40 @@ class AgentApp(App):
         self._msg_counter += 1
         return f"msg-{self._msg_counter}"
 
-    def _append_message(self, content, msg_id: str | None = None) -> Static:
+    def _append_message(self, content, classes: str = "message") -> Static:
         """Mount a new Static widget into the chat scroll area."""
         scroll = self.query_one("#chat-scroll", VerticalScroll)
-        widget = Static(content, id=msg_id or self._next_msg_id(), classes="message")
+        widget = Static(content, id=self._next_msg_id(), classes=classes)
         scroll.mount(widget)
         widget.scroll_visible(animate=False)
         return widget
 
     def _mount_input(self) -> None:
-        """Mount a new inline Input at the bottom of the chat scroll."""
+        """Mount a new inline [user] prompt with Input inside the chat scroll."""
         scroll = self.query_one("#chat-scroll", VerticalScroll)
-        input_widget = Input(id="user-input")
-        scroll.mount(input_widget)
-        input_widget.scroll_visible(animate=False)
-        input_widget.focus()
+        row = Horizontal(id="input-row")
+        label = Static("[bold cyan]\\[user][/] ", id="input-label")
+        inp = Input(id="user-input")
+        scroll.mount(row)
+        row.mount(label)
+        row.mount(inp)
+        row.scroll_visible(animate=False)
+        inp.focus()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value.strip()
         if not text:
             return
-        # Remove the input widget, replace with the static user message
-        event.input.remove()
+        # Remove the input row, replace with static user message
+        row = self.query_one("#input-row", Horizontal)
+        row.remove()
         self._submit_message(text)
 
     def _submit_message(self, text: str) -> None:
         if self._is_running:
             return
 
-        self._append_message(f"[bold cyan]\\[user][/] {text}")
+        self._append_message(f"[bold cyan]\\[user][/] {text}", classes="message user-msg")
 
         self.messages.append({"role": "user", "content": text})
         self._is_running = True
@@ -132,28 +137,43 @@ class AgentApp(App):
             self._is_running = False
             self._mount_input()
 
+    def _flush_pending_tools(self) -> None:
+        """Render buffered tool calls as a group with box-drawing connectors."""
+        if not self._pending_tools:
+            return
+        lines = []
+        for i, (name, args) in enumerate(self._pending_tools):
+            is_last = i == len(self._pending_tools) - 1
+            connector = "└─" if is_last else "├─"
+            lines.append(f"  {connector} [bold yellow]\\[tool][/] [dim]{name}({_fmt_args(args)})[/dim]")
+        self._append_message("\n".join(lines), classes="message tool-group")
+        self._pending_tools = []
+
     def on_agent_message(self, message: AgentMessage) -> None:
         event = message.event
 
         match event:
             case StreamStart():
+                self._flush_pending_tools()
                 self._streaming_parts = []
-                self._streaming_widget = self._append_message("")
+                self._streaming_widget = self._append_message("", classes="message agent-msg")
                 self._stream_timer.resume()
 
             case StreamChunk(text=text):
                 self._streaming_parts.append(text)
 
-            case StreamEnd(content=content):
+            case StreamEnd():
                 self._stream_timer.pause()
-                if self._streaming_widget and content:
-                    self._streaming_widget.update(Markdown(content))
+                # Final flush with label
+                if self._streaming_widget and self._streaming_parts:
+                    full_text = "".join(self._streaming_parts)
+                    self._streaming_widget.update(f"[bold green]\\[agent][/] {full_text}")
                     self._streaming_widget.scroll_visible(animate=False)
                 self._streaming_widget = None
                 self._streaming_parts = []
 
             case ToolCallEvent(name=name, args=args):
-                self._append_message(f"[bold yellow]\\[tool][/] {name}({_fmt_args(args)})")
+                self._pending_tools.append((name, args))
 
             case ToolResultEvent():
                 pass
@@ -168,9 +188,10 @@ class AgentApp(App):
                 self._append_message(f"[bold red]\\[warning][/] {msg}")
 
             case RunEndEvent():
-                pass
+                self._flush_pending_tools()
 
     def _flush_stream(self) -> None:
+        """Periodically update the streaming widget with accumulated text."""
         if self._streaming_parts and self._streaming_widget:
             full_text = "".join(self._streaming_parts)
             self._streaming_widget.update(f"[bold green]\\[agent][/] {full_text}")

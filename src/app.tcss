@@ -5,6 +5,7 @@ Screen {
 #chat-scroll {
     height: 1fr;
     scrollbar-size: 1 1;
+    padding: 1 0 0 0;
 }
 
 .message {
@@ -13,14 +14,37 @@ Screen {
     padding: 0 1;
 }
 
-#user-input {
-    width: 100%;
+.user-msg {
+    margin: 1 0 0 0;
+}
+
+.agent-msg {
+    margin: 1 0 0 0;
+}
+
+.tool-group {
+    margin: 0 0 0 2;
+    color: $text-muted;
+}
+
+#input-row {
     height: auto;
-    min-height: 1;
-    margin: 0;
+    width: 100%;
     padding: 0 1;
+    margin: 1 0 0 0;
+}
+
+#input-label {
+    width: auto;
+    height: 1;
+}
+
+#user-input {
+    width: 1fr;
+    height: 1;
     border: none;
     background: transparent;
+    padding: 0;
 }
 
 #user-input:focus {
