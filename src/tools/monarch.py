@@ -13,8 +13,7 @@ def _get_mm() -> MonarchMoney:
         token = os.getenv("MONARCH_TOKEN")
         if not token:
             raise RuntimeError("MONARCH_TOKEN environment variable is not set")
-        _mm = MonarchMoney()
-        _mm._headers["Authorization"] = f"Bearer {token}"
+        _mm = MonarchMoney(token=token)
     return _mm
 
 
