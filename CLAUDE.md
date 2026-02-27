@@ -49,3 +49,7 @@ A minimal async agentic loop using the OpenAI SDK pointed at [OpenRouter](https:
 from tools import get_tools
 tools, TOOL_MAPPING = get_tools(["bash"])
 ```
+
+### Git
+
+Always commit to git after making changes, with a succinct, descriptive message
