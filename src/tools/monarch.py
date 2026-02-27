@@ -1,7 +1,12 @@
 import json
 import os
 from datetime import date
+from functools import wraps
 
+from gql.transport.exceptions import (
+    TransportError,
+    TransportServerError,
+)
 from monarchmoney import MonarchMoney
 
 _mm: MonarchMoney | None = None
@@ -21,36 +26,62 @@ def _dumps(data) -> str:
     return json.dumps(data, default=str)
 
 
+def _monarch_call(fn):
+    """Wrap a Monarch tool to surface transport/auth errors clearly."""
+
+    @wraps(fn)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await fn(*args, **kwargs)
+        except TransportServerError as e:
+            code = e.code or "unknown"
+            if code == 401 or code == 403:
+                raise RuntimeError(
+                    f"Monarch API returned HTTP {code} — MONARCH_TOKEN is likely expired or invalid"
+                ) from e
+            raise RuntimeError(f"Monarch API returned HTTP {code}: {e}") from e
+        except TransportError as e:
+            raise RuntimeError(f"Monarch API transport error: {e}") from e
+
+    return wrapper
+
+
 # ---------------------------------------------------------------------------
 # Accounts
 # ---------------------------------------------------------------------------
 
 
+@_monarch_call
 async def get_accounts() -> str:
     """Gets all accounts linked to Monarch Money."""
     return _dumps(await _get_mm().get_accounts())
 
 
+@_monarch_call
 async def get_account_type_options() -> str:
     """Gets all account types and subtypes available in Monarch Money."""
     return _dumps(await _get_mm().get_account_type_options())
 
 
+@_monarch_call
 async def get_account_holdings(account_id: str) -> str:
     """Gets holdings for a brokerage or investment account."""
     return _dumps(await _get_mm().get_account_holdings(account_id))
 
 
+@_monarch_call
 async def get_account_history(account_id: str) -> str:
     """Gets daily balance history for an account."""
     return _dumps(await _get_mm().get_account_history(account_id))
 
 
+@_monarch_call
 async def get_recent_account_balances(start_date: str | None = None) -> str:
     """Gets daily balances for all accounts from start_date (YYYY-MM-DD). Defaults to last 31 days."""
     return _dumps(await _get_mm().get_recent_account_balances(start_date=start_date))
 
 
+@_monarch_call
 async def get_aggregate_snapshots(
     start_date: str | None = None,
     end_date: str | None = None,
@@ -67,6 +98,7 @@ async def get_aggregate_snapshots(
     return _dumps(await _get_mm().get_aggregate_snapshots(**kwargs))
 
 
+@_monarch_call
 async def get_account_snapshots_by_type(start_date: str, timeframe: str) -> str:
     """Gets net value snapshots for all account types. timeframe is 'year' or 'month'."""
     return _dumps(await _get_mm().get_account_snapshots_by_type(start_date, timeframe))
@@ -77,6 +109,7 @@ async def get_account_snapshots_by_type(start_date: str, timeframe: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+@_monarch_call
 async def get_institutions() -> str:
     """Gets institutions linked to Monarch Money."""
     return _dumps(await _get_mm().get_institutions())
@@ -87,6 +120,7 @@ async def get_institutions() -> str:
 # ---------------------------------------------------------------------------
 
 
+@_monarch_call
 async def get_transactions(
     limit: int = 100,
     offset: int = 0,
@@ -118,31 +152,37 @@ async def get_transactions(
     ))
 
 
+@_monarch_call
 async def get_transactions_summary() -> str:
     """Gets a summary of transactions."""
     return _dumps(await _get_mm().get_transactions_summary())
 
 
+@_monarch_call
 async def get_transaction_details(transaction_id: str) -> str:
     """Gets detailed information for a single transaction."""
     return _dumps(await _get_mm().get_transaction_details(transaction_id))
 
 
+@_monarch_call
 async def get_transaction_splits(transaction_id: str) -> str:
     """Gets split details for a transaction."""
     return _dumps(await _get_mm().get_transaction_splits(transaction_id))
 
 
+@_monarch_call
 async def get_transaction_categories() -> str:
     """Gets all transaction categories configured in the account."""
     return _dumps(await _get_mm().get_transaction_categories())
 
 
+@_monarch_call
 async def get_transaction_category_groups() -> str:
     """Gets all transaction category groups configured in the account."""
     return _dumps(await _get_mm().get_transaction_category_groups())
 
 
+@_monarch_call
 async def get_transaction_tags() -> str:
     """Gets all tags configured in the account."""
     return _dumps(await _get_mm().get_transaction_tags())
@@ -153,6 +193,7 @@ async def get_transaction_tags() -> str:
 # ---------------------------------------------------------------------------
 
 
+@_monarch_call
 async def get_cashflow(
     limit: int = 100,
     start_date: str | None = None,
@@ -162,6 +203,7 @@ async def get_cashflow(
     return _dumps(await _get_mm().get_cashflow(limit=limit, start_date=start_date, end_date=end_date))
 
 
+@_monarch_call
 async def get_cashflow_summary(
     limit: int = 100,
     start_date: str | None = None,
@@ -171,6 +213,7 @@ async def get_cashflow_summary(
     return _dumps(await _get_mm().get_cashflow_summary(limit=limit, start_date=start_date, end_date=end_date))
 
 
+@_monarch_call
 async def get_budgets(
     start_date: str | None = None,
     end_date: str | None = None,
@@ -184,6 +227,7 @@ async def get_budgets(
 # ---------------------------------------------------------------------------
 
 
+@_monarch_call
 async def get_recurring_transactions(
     start_date: str | None = None,
     end_date: str | None = None,
@@ -197,11 +241,13 @@ async def get_recurring_transactions(
 # ---------------------------------------------------------------------------
 
 
+@_monarch_call
 async def get_credit_history() -> str:
     """Gets credit score history and related user details."""
     return _dumps(await _get_mm().get_credit_history())
 
 
+@_monarch_call
 async def get_subscription_details() -> str:
     """Gets the subscription type for the Monarch Money account."""
     return _dumps(await _get_mm().get_subscription_details())
