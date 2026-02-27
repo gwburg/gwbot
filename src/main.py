@@ -172,47 +172,60 @@ async def call_llm(client, model, messages, tools):
     content_parts = []
     tool_calls_acc = {}
     usage = None
-    printed_prefix = False
 
-    stream = await client.chat.completions.create(
-        model=model,
-        tools=tools or None,
-        messages=messages,
-        stream=True,
-        stream_options={"include_usage": True},
-    )
+    # Characters are queued by the producer and drained at a steady pace by the
+    # consumer, smoothing out the irregular burst pattern of token delivery.
+    CHAR_DELAY = 0.006  # seconds between characters (~165 chars/sec)
+    char_queue: asyncio.Queue[str | None] = asyncio.Queue()
 
-    async for chunk in stream:
-        if chunk.usage:
-            usage = chunk.usage
+    async def producer():
+        nonlocal usage
+        stream = await client.chat.completions.create(
+            model=model,
+            tools=tools or None,
+            messages=messages,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+        async for chunk in stream:
+            if chunk.usage:
+                usage = chunk.usage
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            if delta.content:
+                content_parts.append(delta.content)
+                for char in delta.content:
+                    await char_queue.put(char)
+            if delta.tool_calls:
+                for tc in delta.tool_calls:
+                    idx = tc.index
+                    if idx not in tool_calls_acc:
+                        tool_calls_acc[idx] = {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
+                    if tc.id:
+                        tool_calls_acc[idx]["id"] = tc.id
+                    if tc.function:
+                        if tc.function.name:
+                            tool_calls_acc[idx]["function"]["name"] += tc.function.name
+                        if tc.function.arguments:
+                            tool_calls_acc[idx]["function"]["arguments"] += tc.function.arguments
+        await char_queue.put(None)  # sentinel
 
-        if not chunk.choices:
-            continue
-
-        delta = chunk.choices[0].delta
-
-        if delta.content:
+    async def consumer():
+        printed_prefix = False
+        while True:
+            char = await char_queue.get()
+            if char is None:
+                break
             if not printed_prefix:
                 print("[assistant] ", end="", flush=True)
                 printed_prefix = True
-            print(delta.content, end="", flush=True)
-            content_parts.append(delta.content)
+            print(char, end="", flush=True)
+            await asyncio.sleep(CHAR_DELAY)
+        if printed_prefix:
+            print()  # newline after streamed content
 
-        if delta.tool_calls:
-            for tc in delta.tool_calls:
-                idx = tc.index
-                if idx not in tool_calls_acc:
-                    tool_calls_acc[idx] = {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
-                if tc.id:
-                    tool_calls_acc[idx]["id"] = tc.id
-                if tc.function:
-                    if tc.function.name:
-                        tool_calls_acc[idx]["function"]["name"] += tc.function.name
-                    if tc.function.arguments:
-                        tool_calls_acc[idx]["function"]["arguments"] += tc.function.arguments
-
-    if printed_prefix:
-        print()  # newline after streamed content
+    await asyncio.gather(producer(), consumer())
 
     content = "".join(content_parts) or None
     tool_calls = [tool_calls_acc[i] for i in sorted(tool_calls_acc)] or None
@@ -244,7 +257,7 @@ async def execute_tool(tool_call: dict) -> dict:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run an agent loop")
     default_task = (
-        "Read all the .py files in the current repo and write a SUMMARY.md file summarizing what this repo does"
+        "Tell me about yourself"
     )
     parser.add_argument("task", nargs="?", default=default_task)
     model_map = {k: v for k, v in vars(models).items() if not k.startswith("_")}
