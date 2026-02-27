@@ -7,9 +7,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This project uses `uv` for package management.
 
 ```bash
-# Run the agent (task is optional, defaults to a summarisation task)
-uv run src/main.py "your task here"
-uv run src/main.py "your task here" --model MINIMAX --log run.jsonl
+# Launch the TUI (interactive chat)
+uv run src/app.py
+uv run src/app.py --model SONNET --log run.jsonl
+
+# Launch with an initial task
+uv run src/app.py "your task here"
 
 # Add a dependency
 uv add <package>
@@ -19,15 +22,22 @@ Requires `OPENROUTER_API_KEY` in `.env`. Monarch Money tools also require `MONAR
 
 ## Architecture
 
-A minimal async agentic loop using the OpenAI SDK pointed at [OpenRouter](https://openrouter.ai) (which provides a unified API for many LLM providers).
+A Textual TUI wrapping an async agentic loop that uses the OpenAI SDK pointed at [OpenRouter](https://openrouter.ai) (which provides a unified API for many LLM providers).
 
-**`src/main.py`** — Entry point and core loop:
-- `agent_loop(client, model, messages, tools, max_iterations, log_path)`: Async. Runs the loop, stopping when the model makes no tool calls or `max_iterations` is reached. Tracks token usage per call, warns at 80% context fill, and prints total tokens + cost on exit.
-- `fetch_model_info(model)`: Fetches `context_length` and per-token pricing from the OpenRouter `/models` endpoint at the start of each run.
-- `call_llm()`: Async. Streams the response using a producer-consumer queue — the producer reads chunks from the API and enqueues characters; the consumer drains at a fixed rate (~165 chars/sec) for smooth output. Wrapped with `tenacity` to retry up to 3× on rate limit, connection, and server errors. Returns `(content, tool_calls, usage)`.
-- `execute_tool(tool_call)`: Async. Dispatches a tool call by name via `TOOL_MAPPING`. Awaits async tools directly; runs sync tools via `asyncio.to_thread`. Returns a `tool` role message.
-- `_log_writer(path)`: Returns a `write_log` function that appends JSONL entries (or a no-op if `path` is None). Logs each LLM turn, tool result, and a final `run_end` summary.
-- CLI (`__main__`): `task` positional arg, `--model` accepts aliases from `models.py` (e.g. `SONNET`, `MINIMAX`), `--max-iterations`, `--log`.
+**`src/app.py`** — Textual App entry point:
+- `AgentApp`: Main TUI application. Scrollable chat history (`RichLog`), streaming assistant output via a `Static` widget with 50ms flush timer, status bar showing model/tokens/cost/context usage, input box at bottom. Model switching via `Ctrl+N`.
+- Runs `agent_loop` in a Textual worker. Agent events are delivered via `post_message(AgentMessage(event))` and routed in `on_agent_message()`.
+- CLI: `task` positional arg, `--model` accepts aliases from `models.py`, `--max-iterations`, `--log`.
+
+**`src/agent.py`** — Core agent logic (UI-independent):
+- `agent_loop(client, model, messages, tools, max_iterations, log_path, on_event)`: Async. Runs the loop, emitting `AgentEvent` dataclasses via the `on_event` callback instead of printing.
+- `call_llm()`: Async. Streams the response from OpenRouter, emitting `StreamStart`, `StreamChunk`, `StreamEnd` events. Wrapped with `tenacity` to retry up to 3x on rate limit, connection, and server errors.
+- `execute_tool(tool_call)`: Async. Dispatches a tool call by name via `TOOL_MAPPING`. Awaits async tools directly; runs sync tools via `asyncio.to_thread`.
+- Event types: `StreamStart`, `StreamChunk`, `StreamEnd`, `ToolCallEvent`, `ToolResultEvent`, `UsageEvent`, `WarningEvent`, `RunEndEvent`.
+
+**`src/widgets.py`** — Custom Textual widgets:
+- `StatusBar`: Reactive status line showing model, tokens, cost, and context fill bar.
+- `ModelSelector`: Modal screen for switching models at runtime.
 
 **`src/models.py`** — String constants for OpenRouter model IDs (e.g. `SONNET`, `GEMINI`, `MINIMAX`). The CLI builds its `--model` choices dynamically from this module, so adding a constant here automatically exposes it as a CLI option.
 
