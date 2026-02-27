@@ -146,7 +146,6 @@ async def agent_loop(client, model, messages, tools, max_iterations=50, log_path
         print(f"[warning] reached max iterations ({max_iterations})")
 
     cost = total_prompt_tokens * model_info["prompt_price"] + total_completion_tokens * model_info["completion_price"]
-    print(f"[usage] prompt={total_prompt_tokens} completion={total_completion_tokens} cost=${cost:.4f}")
     write_log(
         "run_end",
         prompt_tokens=total_prompt_tokens,
@@ -294,22 +293,23 @@ if __name__ == "__main__":
             prefill = args.task or ""
             while True:
                 try:
+                    print()
                     user_input = chat_input(prefill)
                     prefill = ""
+                    if not user_input.strip():
+                        break
+                    messages.append({"role": "user", "content": user_input})
+                    await agent_loop(
+                        client,
+                        model_map[args.model],
+                        messages,
+                        tools,
+                        max_iterations=args.max_iterations,
+                        log_path=args.log,
+                    )
                 except (EOFError, KeyboardInterrupt):
                     print()
                     break
-                if not user_input.strip():
-                    break
-                messages.append({"role": "user", "content": user_input})
-                await agent_loop(
-                    client,
-                    model_map[args.model],
-                    messages,
-                    tools,
-                    max_iterations=args.max_iterations,
-                    log_path=args.log,
-                )
         else:
             task = args.task or "Tell me about yourself"
             messages.append({"role": "user", "content": task})
