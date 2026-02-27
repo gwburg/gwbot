@@ -260,12 +260,15 @@ def chat_input(prefill: str = "") -> str:
     if prefill:
         try:
             import readline
-            readline.set_startup_hook(lambda: readline.insert_text(prefill))
+            def hook():
+                readline.insert_text(prefill)
+                readline.redisplay()
+            readline.set_pre_input_hook(hook)
             try:
                 return input("[user] ")
             finally:
-                readline.set_startup_hook()
-        except ImportError:
+                readline.set_pre_input_hook(None)
+        except (ImportError, AttributeError):
             pass
     return input("[user] ")
 
