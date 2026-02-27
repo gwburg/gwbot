@@ -67,11 +67,11 @@ class AgentApp(App):
         self.messages: list[dict] = [{"role": "system", "content": system_prompt}]
         self._streaming_parts: list[str] = []
         self._streaming_widget: Static | None = None
-        self._pending_tools: list[tuple[str, dict]] = []
         self._is_running = False
         self._msg_counter = 0
         self._spinner_widget: Static | None = None
         self._spinner_frame = 0
+        self._tool_widgets: list[tuple[Static, str, dict]] = []  # (widget, name, args)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -174,17 +174,16 @@ class AgentApp(App):
             self._is_running = False
             self._mount_input()
 
-    def _flush_pending_tools(self) -> None:
-        """Render buffered tool calls as a group with box-drawing connectors."""
-        if not self._pending_tools:
+    def _render_tool(self, connector: str, name: str, args: dict) -> str:
+        return f"[{C_DIM}]{connector}[/] [{C_TOOL}]\\[tool][/] [{C_DIM}]{name}({_fmt_args(args)})[/]"
+
+    def _close_tool_group(self) -> None:
+        """Swap the last tool call's connector from ├─ to └─."""
+        if not self._tool_widgets:
             return
-        lines = []
-        for i, (name, args) in enumerate(self._pending_tools):
-            is_last = i == len(self._pending_tools) - 1
-            connector = "└─" if is_last else "├─"
-            lines.append(f"[{C_DIM}]{connector}[/] [{C_TOOL}]\\[tool][/] [{C_DIM}]{name}({_fmt_args(args)})[/]")
-        self._append_widget("\n".join(lines), classes="message tool-group")
-        self._pending_tools = []
+        widget, name, args = self._tool_widgets[-1]
+        widget.update(self._render_tool("└─", name, args))
+        self._tool_widgets = []
 
     def on_agent_message(self, message: AgentMessage) -> None:
         event = message.event
@@ -192,8 +191,7 @@ class AgentApp(App):
         match event:
             case StreamStart():
                 self._hide_spinner()
-                # Flush any tools from the previous turn
-                self._flush_pending_tools()
+                self._close_tool_group()
                 # Always mount the [agent] label
                 self._append_widget(f"[{C_AGENT}]\\[agent][/]", classes="agent-label")
                 # Mount the content widget for streaming
@@ -219,7 +217,12 @@ class AgentApp(App):
                 self._show_spinner()
 
             case ToolCallEvent(name=name, args=args):
-                self._pending_tools.append((name, args))
+                self._hide_spinner()
+                widget = self._append_widget(
+                    self._render_tool("├─", name, args), classes="message tool-group"
+                )
+                self._tool_widgets.append((widget, name, args))
+                self._show_spinner()
 
             case ToolResultEvent():
                 pass
@@ -235,7 +238,7 @@ class AgentApp(App):
 
             case RunEndEvent():
                 self._hide_spinner()
-                self._flush_pending_tools()
+                self._close_tool_group()
 
     def _flush_stream(self) -> None:
         """Periodically update the streaming widget with accumulated text."""
