@@ -83,7 +83,8 @@ def _fmt_args(args: dict, max_len: int = 60) -> str:
 
 def log_tool_calls(tool_calls: list | None):
     for tc in tool_calls or []:
-        args = json.loads(tc["function"]["arguments"])
+        raw = tc["function"]["arguments"]
+        args = json.loads(raw) if raw else {}
         print(f"[tool] {tc['function']['name']}({_fmt_args(args)})")
 
 
@@ -263,7 +264,8 @@ if __name__ == "__main__":
     model_map = {k: v for k, v in vars(models).items() if not k.startswith("_")}
     parser.add_argument("--model", default="MINIMAX", choices=model_map,
                         metavar="MODEL", help=f"Model alias. Choices: {', '.join(model_map)}")
-    parser.add_argument("--system-prompt", default="You are a helpful assistant.")
+    parser.add_argument("--system-prompt",
+                        default="You are a helpful, personal assistant, who can do a variety of general purpose tasks based on the tools provided to you")
     parser.add_argument("--max-iterations", type=int, default=50)
     parser.add_argument("--log", metavar="PATH", help="Write a JSONL log to this file")
     args = parser.parse_args()
