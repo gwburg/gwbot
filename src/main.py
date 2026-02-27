@@ -237,7 +237,8 @@ async def execute_tool(tool_call: dict) -> dict:
     name = tool_call["function"]["name"]
     try:
         func = TOOL_MAPPING[name]
-        kwargs = json.loads(tool_call["function"]["arguments"])
+        raw_args = tool_call["function"]["arguments"]
+        kwargs = json.loads(raw_args) if raw_args else {}
         if asyncio.iscoroutinefunction(func):
             tool_output = await func(**kwargs)
         else:
