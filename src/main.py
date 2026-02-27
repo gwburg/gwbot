@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import json
 import os
 from datetime import datetime, timezone
@@ -6,7 +7,7 @@ from datetime import datetime, timezone
 import openai
 import requests
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import AsyncOpenAI
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -22,7 +23,7 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 
 def create_client():
-    return OpenAI(
+    return AsyncOpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=OPENROUTER_API_KEY,
     )
@@ -80,12 +81,10 @@ def _fmt_args(args: dict, max_len: int = 60) -> str:
     return ", ".join(parts)
 
 
-def log_step(llm_message):
-    if llm_message.content:
-        print(f"[assistant] {llm_message.content}")
-    for tool_call in llm_message.tool_calls or []:
-        args = json.loads(tool_call.function.arguments)
-        print(f"[tool] {tool_call.function.name}({_fmt_args(args)})")
+def log_tool_calls(tool_calls: list | None):
+    for tc in tool_calls or []:
+        args = json.loads(tc["function"]["arguments"])
+        print(f"[tool] {tc['function']['name']}({_fmt_args(args)})")
 
 
 # ---------------------------------------------------------------------------
@@ -93,8 +92,8 @@ def log_step(llm_message):
 # ---------------------------------------------------------------------------
 
 
-def agent_loop(client, model, messages, tools, max_iterations=50, log_path=None):
-    model_info = fetch_model_info(model)
+async def agent_loop(client, model, messages, tools, max_iterations=50, log_path=None):
+    model_info = await asyncio.to_thread(fetch_model_info, model)
     context_length = model_info["context_length"]
     write_log = _log_writer(log_path)
 
@@ -102,12 +101,15 @@ def agent_loop(client, model, messages, tools, max_iterations=50, log_path=None)
     total_completion_tokens = 0
 
     for _ in range(max_iterations):
-        response = call_llm(client, model, messages, tools)
-        llm_message = response.choices[0].message
-        messages.append(llm_message.to_dict())
+        content, tool_calls, usage = await call_llm(client, model, messages, tools)
+
+        # Build message dict for history
+        llm_msg = {"role": "assistant", "content": content}
+        if tool_calls:
+            llm_msg["tool_calls"] = tool_calls
+        messages.append(llm_msg)
 
         # Usage tracking
-        usage = response.usage
         if usage:
             total_prompt_tokens += usage.prompt_tokens or 0
             total_completion_tokens += usage.completion_tokens or 0
@@ -116,27 +118,27 @@ def agent_loop(client, model, messages, tools, max_iterations=50, log_path=None)
                 if pct >= 0.8:
                     print(f"[warning] context {pct:.0%} full ({usage.prompt_tokens}/{context_length} tokens)")
 
-        log_step(llm_message)
+        log_tool_calls(tool_calls)
         write_log(
             "llm",
-            content=llm_message.content,
+            content=content,
             tool_calls=[
-                {"name": tc.function.name, "args": json.loads(tc.function.arguments)}
-                for tc in (llm_message.tool_calls or [])
+                {"name": tc["function"]["name"], "args": json.loads(tc["function"]["arguments"])}
+                for tc in (tool_calls or [])
             ],
             usage={"prompt": usage.prompt_tokens, "completion": usage.completion_tokens} if usage else None,
         )
 
-        if not llm_message.tool_calls:
+        if not tool_calls:
             break
 
-        for tool_call in llm_message.tool_calls:
-            tool_output_msg = execute_tool(tool_call)
+        for tc in tool_calls:
+            tool_output_msg = await execute_tool(tc)
             messages.append(tool_output_msg)
             write_log(
                 "tool_result",
-                tool=tool_call.function.name,
-                call_id=tool_call.id,
+                tool=tc["function"]["name"],
+                call_id=tc["id"],
                 output=tool_output_msg["content"],
             )
     else:
@@ -166,20 +168,67 @@ def agent_loop(client, model, messages, tools, max_iterations=50, log_path=None)
     ),
     reraise=True,
 )
-def call_llm(client, model, messages, tools):
-    return client.chat.completions.create(
+async def call_llm(client, model, messages, tools):
+    content_parts = []
+    tool_calls_acc = {}
+    usage = None
+    printed_prefix = False
+
+    stream = await client.chat.completions.create(
         model=model,
-        tools=tools,
+        tools=tools or None,
         messages=messages,
+        stream=True,
+        stream_options={"include_usage": True},
     )
 
+    async for chunk in stream:
+        if chunk.usage:
+            usage = chunk.usage
 
-def execute_tool(tool_call):
-    name = tool_call.function.name
+        if not chunk.choices:
+            continue
+
+        delta = chunk.choices[0].delta
+
+        if delta.content:
+            if not printed_prefix:
+                print("[assistant] ", end="", flush=True)
+                printed_prefix = True
+            print(delta.content, end="", flush=True)
+            content_parts.append(delta.content)
+
+        if delta.tool_calls:
+            for tc in delta.tool_calls:
+                idx = tc.index
+                if idx not in tool_calls_acc:
+                    tool_calls_acc[idx] = {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
+                if tc.id:
+                    tool_calls_acc[idx]["id"] = tc.id
+                if tc.function:
+                    if tc.function.name:
+                        tool_calls_acc[idx]["function"]["name"] += tc.function.name
+                    if tc.function.arguments:
+                        tool_calls_acc[idx]["function"]["arguments"] += tc.function.arguments
+
+    if printed_prefix:
+        print()  # newline after streamed content
+
+    content = "".join(content_parts) or None
+    tool_calls = [tool_calls_acc[i] for i in sorted(tool_calls_acc)] or None
+
+    return content, tool_calls, usage
+
+
+async def execute_tool(tool_call: dict) -> dict:
+    name = tool_call["function"]["name"]
     try:
         func = TOOL_MAPPING[name]
-        kwargs = json.loads(tool_call.function.arguments)
-        tool_output = func(**kwargs)
+        kwargs = json.loads(tool_call["function"]["arguments"])
+        if asyncio.iscoroutinefunction(func):
+            tool_output = await func(**kwargs)
+        else:
+            tool_output = await asyncio.to_thread(func, **kwargs)
     except KeyError:
         tool_output = f"Error: tool '{name}' does not exist"
     except Exception as e:
@@ -187,7 +236,7 @@ def execute_tool(tool_call):
 
     return {
         "role": "tool",
-        "tool_call_id": tool_call.id,
+        "tool_call_id": tool_call["id"],
         "content": str(tool_output),
     }
 
@@ -212,11 +261,11 @@ if __name__ == "__main__":
         {"role": "user", "content": args.task},
     ]
 
-    agent_loop(
+    asyncio.run(agent_loop(
         client,
         model_map[args.model],
         messages,
         tools,
         max_iterations=args.max_iterations,
         log_path=args.log,
-    )
+    ))

@@ -1,11 +1,13 @@
 from .bash import tools as _bash_tools, TOOL_MAPPING as _bash_map
 from .editor import tools as _editor_tools, TOOL_MAPPING as _editor_map
+from .monarch import tools as _monarch_tools, TOOL_MAPPING as _monarch_map
 
-tools = _bash_tools + _editor_tools
+tools = _bash_tools + _editor_tools + _monarch_tools
 
 TOOL_MAPPING = {
     **_bash_map,
     **_editor_map,
+    **_monarch_map,
 }
 
 # Index schemas by name for fast lookup
