@@ -1,6 +1,8 @@
 """Memory-related system prompt instructions."""
 
-from memory import get_knowledge, get_tags
+from datetime import date
+
+from memory import get_knowledge, get_tags, list_tasks
 
 
 def build_memory_prompt(category_tags: list[str] | None = None) -> str:
@@ -22,6 +24,10 @@ def build_memory_prompt(category_tags: list[str] | None = None) -> str:
         "- When context from past conversations might be relevant, use `search_memories`.\n"
         "- Prefer existing tags over inventing new ones.\n"
         "- Only save meaningful, long-term information — not ephemeral details.\n\n"
+        "### TODOs and reminders\n"
+        "- Use `create_todo` for simple tasks and `create_reminder` for deadline-based reminders.\n"
+        "- Use `list_tasks` to see all open items, `complete_task` to mark done (deletes them).\n"
+        "- Proactively check and mention overdue reminders when relevant.\n\n"
         "### Knowledge tags\n"
         "Memories can be tagged for automatic injection:\n"
         "- `always` — content is loaded into the system prompt at startup.\n"
@@ -36,5 +42,21 @@ def build_memory_prompt(category_tags: list[str] | None = None) -> str:
         prompt += "\n\n## Knowledge (always loaded)\n"
         for mem in always_knowledge:
             prompt += f"\n- {mem.get('content', '')}"
+
+    # Inject open tasks
+    tasks = list_tasks()
+    if tasks:
+        today = date.today().isoformat()
+        prompt += "\n\n## Open Tasks\n"
+        for t in tasks:
+            content = t.get("content", "")[:200]
+            tid = t.get("id", "")
+            ttype = t.get("type", "todo")
+            deadline = t.get("deadline")
+            if ttype == "reminder" and deadline:
+                overdue = " **OVERDUE**" if deadline < today else ""
+                prompt += f"\n- [{tid}] REMINDER (due {deadline}{overdue}): {content}"
+            else:
+                prompt += f"\n- [{tid}] TODO: {content}"
 
     return prompt

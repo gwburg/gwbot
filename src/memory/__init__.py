@@ -70,7 +70,7 @@ def read_conversation(conversation_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _write_memory_file(memory_id: str, tags: list[str], content: str, conversation_id: str | None = None, created: str | None = None, knowledge_tag: str | None = None) -> dict:
+def _write_memory_file(memory_id: str, tags: list[str], content: str, conversation_id: str | None = None, created: str | None = None, knowledge_tag: str | None = None, type: str = "memory", deadline: str | None = None) -> dict:
     """Write a high-level memory .md file with YAML frontmatter."""
     ensure_dirs()
     now = datetime.now(timezone.utc).isoformat()
@@ -80,6 +80,10 @@ def _write_memory_file(memory_id: str, tags: list[str], content: str, conversati
         "created": created or now,
         "updated": now,
     }
+    if type != "memory":
+        meta["type"] = type
+    if deadline:
+        meta["deadline"] = deadline
     if knowledge_tag:
         meta["knowledge_tag"] = knowledge_tag
     if conversation_id:
@@ -106,13 +110,13 @@ def _write_memory_file(memory_id: str, tags: list[str], content: str, conversati
     return meta
 
 
-def create_memory(content: str, tags: list[str], conversation_id: str | None = None, knowledge_tag: str | None = None) -> dict:
+def create_memory(content: str, tags: list[str], conversation_id: str | None = None, knowledge_tag: str | None = None, type: str = "memory", deadline: str | None = None) -> dict:
     """Create a new high-level memory and return its metadata."""
     memory_id = uuid4().hex[:12]
-    return _write_memory_file(memory_id, tags, content, conversation_id, knowledge_tag=knowledge_tag)
+    return _write_memory_file(memory_id, tags, content, conversation_id, knowledge_tag=knowledge_tag, type=type, deadline=deadline)
 
 
-def update_memory(memory_id: str, content: str | None = None, tags: list[str] | None = None, knowledge_tag: str | None = None) -> dict:
+def update_memory(memory_id: str, content: str | None = None, tags: list[str] | None = None, knowledge_tag: str | None = None, deadline: str | None = None) -> dict:
     """Update an existing memory's content and/or tags."""
     existing = _parse_memory_file(memory_id)
     if existing is None:
@@ -121,7 +125,33 @@ def update_memory(memory_id: str, content: str | None = None, tags: list[str] | 
     new_content = content if content is not None else existing["content"]
     new_tags = tags if tags is not None else existing["tags"]
     new_knowledge_tag = knowledge_tag if knowledge_tag is not None else existing.get("knowledge_tag")
-    return _write_memory_file(memory_id, new_tags, new_content, existing.get("conversation_id"), existing["created"], knowledge_tag=new_knowledge_tag)
+    new_deadline = deadline if deadline is not None else existing.get("deadline")
+    return _write_memory_file(memory_id, new_tags, new_content, existing.get("conversation_id"), existing["created"], knowledge_tag=new_knowledge_tag, type=existing.get("type", "memory"), deadline=new_deadline)
+
+
+def delete_memory(memory_id: str) -> None:
+    """Delete a memory file and its embedding."""
+    path = _HIGH_DIR / f"{memory_id}.md"
+    if not path.exists():
+        raise FileNotFoundError(f"Memory '{memory_id}' not found")
+    path.unlink()
+    try:
+        from memory.embeddings import delete_embedding
+        delete_embedding(memory_id)
+    except Exception:
+        pass
+
+
+def list_tasks() -> list[dict]:
+    """Return all todo/reminder memories, reminders sorted by deadline first."""
+    tasks = [m for m in list_all_memories() if m.get("type") in ("todo", "reminder")]
+    # Reminders with deadline first (sorted by deadline), then todos
+    reminders = sorted(
+        [t for t in tasks if t.get("type") == "reminder"],
+        key=lambda t: t.get("deadline") or "",
+    )
+    todos = [t for t in tasks if t.get("type") == "todo"]
+    return reminders + todos
 
 
 def read_memory(memory_id: str) -> str:

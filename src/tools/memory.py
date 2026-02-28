@@ -4,7 +4,9 @@ import json
 
 from memory import (
     create_memory as _create_memory,
+    delete_memory as _delete_memory,
     get_tags as _get_tags,
+    list_tasks as _list_tasks,
     read_conversation as _read_conversation,
     read_memory as _read_memory,
     search_memories as _search_memories,
@@ -56,6 +58,45 @@ def list_tags() -> str:
     if not tags:
         return "No tags yet."
     return ", ".join(tags)
+
+
+def create_todo(content: str, tags: str) -> str:
+    tag_list = [t.strip() for t in tags.split(",")]
+    meta = _create_memory(content, tag_list, type="todo")
+    return json.dumps(meta, indent=2)
+
+
+def create_reminder(content: str, tags: str, deadline: str) -> str:
+    tag_list = [t.strip() for t in tags.split(",")]
+    meta = _create_memory(content, tag_list, type="reminder", deadline=deadline)
+    return json.dumps(meta, indent=2)
+
+
+def complete_task(memory_id: str) -> str:
+    try:
+        _delete_memory(memory_id)
+    except FileNotFoundError as e:
+        return str(e)
+    return f"Task '{memory_id}' completed and removed."
+
+
+def list_tasks() -> str:
+    tasks = _list_tasks()
+    if not tasks:
+        return "No open tasks."
+    results = []
+    for t in tasks:
+        entry = {
+            "id": t.get("id"),
+            "type": t.get("type"),
+            "tags": t.get("tags", []),
+            "preview": (t.get("content", "")[:200] or ""),
+            "created": t.get("created"),
+        }
+        if t.get("deadline"):
+            entry["deadline"] = t["deadline"]
+        results.append(entry)
+    return json.dumps(results, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -202,6 +243,81 @@ tools = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_todo",
+            "description": "Create a TODO item. Deleted when completed via complete_task.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "What needs to be done",
+                    },
+                    "tags": {
+                        "type": "string",
+                        "description": "Comma-separated descriptive tags",
+                    },
+                },
+                "required": ["content", "tags"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_reminder",
+            "description": "Create a reminder with a deadline. Deleted when completed via complete_task.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "What to be reminded about",
+                    },
+                    "tags": {
+                        "type": "string",
+                        "description": "Comma-separated descriptive tags",
+                    },
+                    "deadline": {
+                        "type": "string",
+                        "description": "Due date in YYYY-MM-DD format (e.g. '2026-03-15')",
+                    },
+                },
+                "required": ["content", "tags", "deadline"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "complete_task",
+            "description": "Mark a TODO or reminder as done. This deletes it permanently.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "memory_id": {
+                        "type": "string",
+                        "description": "The ID of the todo or reminder to complete",
+                    },
+                },
+                "required": ["memory_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_tasks",
+            "description": "List all open TODOs and reminders. Reminders are sorted by deadline.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
 ]
 
 
@@ -212,4 +328,8 @@ TOOL_MAPPING = {
     "create_memory": create_memory,
     "update_memory": update_memory,
     "list_tags": list_tags,
+    "create_todo": create_todo,
+    "create_reminder": create_reminder,
+    "complete_task": complete_task,
+    "list_tasks": list_tasks,
 }
