@@ -38,20 +38,14 @@ def read_conversation(conversation_id: str) -> str:
 
 def create_memory(content: str, tags: str, knowledge_tag: str | None = None) -> str:
     tag_list = [t.strip() for t in tags.split(",")]
-    if knowledge_tag:
-        tag_list.append(knowledge_tag)
-    meta = _create_memory(content, tag_list)
+    meta = _create_memory(content, tag_list, knowledge_tag=knowledge_tag)
     return json.dumps(meta, indent=2)
 
 
 def update_memory(memory_id: str, content: str | None = None, tags: str | None = None, knowledge_tag: str | None = None) -> str:
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
-    if knowledge_tag and tag_list is not None:
-        tag_list.append(knowledge_tag)
-    elif knowledge_tag:
-        tag_list = [knowledge_tag]
     try:
-        meta = _update_memory(memory_id, content=content, tags=tag_list)
+        meta = _update_memory(memory_id, content=content, tags=tag_list, knowledge_tag=knowledge_tag)
     except FileNotFoundError as e:
         return str(e)
     return json.dumps(meta, indent=2)

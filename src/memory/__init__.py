@@ -70,7 +70,7 @@ def read_conversation(conversation_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _write_memory_file(memory_id: str, tags: list[str], content: str, conversation_id: str | None = None, created: str | None = None) -> dict:
+def _write_memory_file(memory_id: str, tags: list[str], content: str, conversation_id: str | None = None, created: str | None = None, knowledge_tag: str | None = None) -> dict:
     """Write a high-level memory .md file with YAML frontmatter."""
     ensure_dirs()
     now = datetime.now(timezone.utc).isoformat()
@@ -80,6 +80,8 @@ def _write_memory_file(memory_id: str, tags: list[str], content: str, conversati
         "created": created or now,
         "updated": now,
     }
+    if knowledge_tag:
+        meta["knowledge_tag"] = knowledge_tag
     if conversation_id:
         meta["conversation_id"] = conversation_id
 
@@ -93,13 +95,13 @@ def _write_memory_file(memory_id: str, tags: list[str], content: str, conversati
     return meta
 
 
-def create_memory(content: str, tags: list[str], conversation_id: str | None = None) -> dict:
+def create_memory(content: str, tags: list[str], conversation_id: str | None = None, knowledge_tag: str | None = None) -> dict:
     """Create a new high-level memory and return its metadata."""
     memory_id = uuid4().hex[:12]
-    return _write_memory_file(memory_id, tags, content, conversation_id)
+    return _write_memory_file(memory_id, tags, content, conversation_id, knowledge_tag=knowledge_tag)
 
 
-def update_memory(memory_id: str, content: str | None = None, tags: list[str] | None = None) -> dict:
+def update_memory(memory_id: str, content: str | None = None, tags: list[str] | None = None, knowledge_tag: str | None = None) -> dict:
     """Update an existing memory's content and/or tags."""
     existing = _parse_memory_file(memory_id)
     if existing is None:
@@ -107,7 +109,8 @@ def update_memory(memory_id: str, content: str | None = None, tags: list[str] | 
 
     new_content = content if content is not None else existing["content"]
     new_tags = tags if tags is not None else existing["tags"]
-    return _write_memory_file(memory_id, new_tags, new_content, existing.get("conversation_id"), existing["created"])
+    new_knowledge_tag = knowledge_tag if knowledge_tag is not None else existing.get("knowledge_tag")
+    return _write_memory_file(memory_id, new_tags, new_content, existing.get("conversation_id"), existing["created"], knowledge_tag=new_knowledge_tag)
 
 
 def read_memory(memory_id: str) -> str:
@@ -193,8 +196,8 @@ def get_tags() -> list[str]:
 
 
 def get_knowledge(tag: str) -> list[dict]:
-    """Return all memories tagged with the given tag (for knowledge injection)."""
-    return [m for m in list_all_memories() if tag in m.get("tags", [])]
+    """Return all memories whose knowledge_tag matches the given tag."""
+    return [m for m in list_all_memories() if m.get("knowledge_tag") == tag]
 
 
 def _add_tags(new_tags: list[str]) -> None:
