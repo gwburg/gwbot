@@ -283,10 +283,12 @@ class AgentApp(App):
 
     async def action_quit(self) -> None:
         """Spawn background memory process, then quit immediately."""
-        try:
-            spawn_background(self.conversation_id, self.messages)
-        except Exception:
-            pass  # Memory is best-effort — never block exit
+        has_conversation = any(m.get("role") != "system" for m in self.messages)
+        if has_conversation:
+            try:
+                spawn_background(self.conversation_id, self.messages)
+            except Exception:
+                pass  # Memory is best-effort — never block exit
         self.exit()
 
     def action_open_note(self) -> None:
