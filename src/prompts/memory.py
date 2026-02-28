@@ -75,12 +75,19 @@ def build_memory_prompt(category_tags: list[str] | None = None) -> str:
 
 
 def _format_task(t: dict, today: str) -> str:
-    content = t.get("content", "")[:200]
+    content = t.get("content", "")
     tid = t.get("id", "")
     ttype = t.get("type", "todo")
     deadline = t.get("deadline")
     if ttype == "reminder" and deadline:
         overdue = " **OVERDUE**" if deadline < today else ""
         recur = "recurring, " if t.get("recurring") else ""
-        return f"\n- [{tid}] REMINDER ({recur}due {deadline}{overdue}): {content}"
-    return f"\n- [{tid}] TODO: {content}"
+        return f"\n- [{tid}] REMINDER ({recur}due {deadline}{overdue}): {content[:200]}"
+    # For todos, show each checklist item on its own line so none are hidden
+    lines = content.splitlines()
+    items = [l.strip() for l in lines if l.strip().startswith("- [ ]")]
+    if items:
+        title = next((l for l in lines if l.strip() and not l.strip().startswith("- [")), None)
+        header = f"\n- [{tid}] TODO: {title}" if title else f"\n- [{tid}] TODO:"
+        return header + "".join(f"\n    {item}" for item in items)
+    return f"\n- [{tid}] TODO: {content[:200]}"

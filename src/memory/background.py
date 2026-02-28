@@ -158,7 +158,7 @@ def _build_summarize_prompt(existing_memories: str, tags: str, conversation: str
         "Trivial exchanges (greetings, one-off questions, simple tool usage) should NOT be saved.\n"
         "If the conversation covers multiple unrelated topics, create separate operations for each.\n"
         "If the user or agent committed to something by a deadline, create a reminder.\n"
-        "If it's an open-ended task with no deadline, create a todo.\n"
+        "If there are open-ended tasks with no deadline, group related ones into a single `todo` list using markdown checkboxes (`- [ ] item`). Don't create a separate todo per task.\n"
         "Return `[]` if the conversation contains nothing worth saving.\n\n"
         "Respond with a JSON array of memory operations (no markdown fences).\n\n"
         + _SCHEMA_FIELDS
