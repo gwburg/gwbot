@@ -1,6 +1,16 @@
 import argparse
 
+from rich.markdown import Markdown
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Horizontal, VerticalScroll
+from textual.message import Message
+from textual.widgets import Footer, Header, Input, Static
+from tools import tools
+
 import models
+from prompts import SYSTEM_PROMPTS, DEFAULT_SYSTEM_PROMPT
+from widgets import ModelSelector, StatusBar
 from agent import (
     AgentEvent,
     RunEndEvent,
@@ -15,15 +25,7 @@ from agent import (
     agent_loop,
     create_client,
 )
-from rich.markdown import Markdown
-from textual.app import App, ComposeResult
-from textual.binding import Binding
-from textual.containers import Horizontal, VerticalScroll
-from textual.message import Message
-from textual.widgets import Footer, Header, Input, Static
-from tools import tools
 
-from widgets import ModelSelector, StatusBar
 
 MODEL_MAP = {k: v for k, v in vars(models).items() if not k.startswith("_")}
 
@@ -273,14 +275,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the agent TUI")
     parser.add_argument("task", nargs="?", default=None, help="Initial task to send")
     parser.add_argument("--model", default="MINIMAX", choices=MODEL_MAP, metavar="MODEL", help=f"Model alias. Choices: {', '.join(MODEL_MAP)}")
-    parser.add_argument("--system-prompt", default="You are a helpful, personal assistant, who can do a variety of general purpose tasks based on the tools provided to you")
+    parser.add_argument("--system-prompt", default=None, help="Override system prompt text directly")
+    parser.add_argument("--persona", default="default", choices=SYSTEM_PROMPTS, help=f"System prompt persona. Choices: {', '.join(SYSTEM_PROMPTS)}")
     parser.add_argument("--max-iterations", type=int, default=50)
     parser.add_argument("--log", metavar="PATH", help="Write a JSONL log to this file")
     args = parser.parse_args()
 
+    system_prompt = args.system_prompt or SYSTEM_PROMPTS[args.persona]
+
     app = AgentApp(
         model=args.model,
-        system_prompt=args.system_prompt,
+        system_prompt=system_prompt,
         max_iterations=args.max_iterations,
         log_path=args.log,
         initial_task=args.task,
