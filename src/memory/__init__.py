@@ -77,8 +77,12 @@ def load_conversation(conversation_id: str) -> list[dict]:
     return messages
 
 
-def list_conversations() -> list[dict]:
-    """List all saved conversations, newest first.
+def list_conversations(limit: int = 0, offset: int = 0) -> list[dict]:
+    """List saved conversations, newest first.
+
+    Args:
+        limit: Max number of results to return (0 = all).
+        offset: Number of results to skip from the start.
 
     Returns list of dicts with id, preview (last user message),
     date (mtime), and estimated_tokens.
@@ -108,7 +112,9 @@ def list_conversations() -> list[dict]:
             "estimated_tokens": total_chars // 4,
         })
     results.sort(key=lambda r: r["date"], reverse=True)
-    return results
+    if limit > 0:
+        return results[offset:offset + limit]
+    return results[offset:]
 
 
 # ---------------------------------------------------------------------------

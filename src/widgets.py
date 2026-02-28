@@ -58,36 +58,57 @@ class ConversationSelector(ModalScreen[str | None]):
     """Modal screen for selecting a conversation to resume."""
 
     BINDINGS = [("escape", "dismiss_modal", "Cancel")]
+    PAGE_SIZE = 10
 
     def __init__(self, context_length: int | None = None):
         super().__init__()
         self.context_length = context_length
+        self._offset = 0
+
+    def _make_option(self, conv: dict) -> Option:
+        date_str = conv["date"].strftime("%b %-d %-I:%M%p").lower()
+        preview = conv["preview"] or "(no user messages)"
+        tokens = conv["estimated_tokens"]
+        label = f"{date_str}  {preview}"
+
+        if self.context_length and tokens > self.context_length:
+            label += f"  [#6c7086](exceeds context window)[/#6c7086]"
+            return Option(label, id=conv["id"], disabled=True)
+        elif self.context_length and tokens > 0.75 * self.context_length:
+            pct = int(tokens / self.context_length * 100)
+            label += f"  [#f9e2af](~{pct}% of context)[/#f9e2af]"
+        return Option(label, id=conv["id"])
 
     def compose(self):
-        conversations = list_conversations()
+        conversations = list_conversations(limit=self.PAGE_SIZE)
+        self._offset = len(conversations)
         if not conversations:
             yield Static("No saved conversations.", id="conv-empty")
             return
-        options = []
-        for conv in conversations:
-            date_str = conv["date"].strftime("%b %-d %-I:%M%p").lower()
-            preview = conv["preview"] or "(no user messages)"
-            tokens = conv["estimated_tokens"]
-            label = f"{date_str}  {preview}"
-
-            if self.context_length and tokens > self.context_length:
-                label += f"  [#6c7086](exceeds context window)[/#6c7086]"
-                options.append(Option(label, id=conv["id"], disabled=True))
-            elif self.context_length and tokens > 0.75 * self.context_length:
-                pct = int(tokens / self.context_length * 100)
-                label += f"  [#f9e2af](~{pct}% of context)[/#f9e2af]"
-                options.append(Option(label, id=conv["id"]))
-            else:
-                options.append(Option(label, id=conv["id"]))
+        options = [self._make_option(c) for c in conversations]
+        # Check if there are more conversations to load
+        if len(conversations) == self.PAGE_SIZE:
+            options.append(Option("[#6c7086]Load more...[/#6c7086]", id="__load_more__"))
         yield OptionList(*options, id="conv-list")
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected):
-        self.dismiss(event.option.id)
+        if event.option.id == "__load_more__":
+            self._load_more()
+        else:
+            self.dismiss(event.option.id)
+
+    def _load_more(self) -> None:
+        option_list = self.query_one("#conv-list", OptionList)
+        # Remove the "Load more" option
+        option_list.remove_option("__load_more__")
+        # Fetch next page
+        conversations = list_conversations(limit=self.PAGE_SIZE, offset=self._offset)
+        self._offset += len(conversations)
+        for conv in conversations:
+            option_list.add_option(self._make_option(conv))
+        # Add "Load more" again if we got a full page
+        if len(conversations) == self.PAGE_SIZE:
+            option_list.add_option(Option("[#6c7086]Load more...[/#6c7086]", id="__load_more__"))
 
     def action_dismiss_modal(self):
         self.dismiss(None)
