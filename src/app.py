@@ -4,6 +4,7 @@ from rich.markdown import Markdown
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
+from textual.css.query import NoMatches
 from textual.message import Message
 from textual.widgets import Footer, Header, Static
 from tools import CATEGORY_TAGS, categories as tool_categories, tools
@@ -362,21 +363,15 @@ class AgentApp(App):
     def check_action(self, action: str, parameters: tuple) -> bool | None:
         if action in ("focus_chat", "focus_notes"):
             try:
-                pane = self.query_one("#notes-pane", NotesPane)
-                return True if pane.display else False
-            except Exception:
+                return self.query_one("#notes-pane", NotesPane).display
+            except NoMatches:
                 return None
         return True
 
     def action_open_note(self) -> None:
         pane = self.query_one("#notes-pane", NotesPane)
         if pane.display:
-            pane.display = False
-            self.refresh_bindings()
-            try:
-                self.query_one("#user-input").focus()
-            except Exception:
-                pass
+            pane.action_close_notes()
         else:
             pane.display = True
             self.refresh_bindings()
@@ -385,7 +380,7 @@ class AgentApp(App):
     def action_focus_chat(self) -> None:
         try:
             self.query_one("#user-input").focus()
-        except Exception:
+        except NoMatches:
             pass
 
     def action_focus_notes(self) -> None:

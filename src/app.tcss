@@ -1,7 +1,3 @@
-Screen {
-    layout: vertical;
-}
-
 #main-split {
     height: 1fr;
     layout: horizontal;

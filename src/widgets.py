@@ -5,7 +5,8 @@ from textual.containers import Vertical
 from textual.message import Message
 from textual.reactive import reactive
 from textual.screen import ModalScreen
-from textual.widgets import Header, OptionList, Static, TextArea
+from textual.css.query import NoMatches
+from textual.widgets import OptionList, Static, TextArea
 from textual.widgets.option_list import Option
 from memory import list_conversations
 from memory.background import spawn_note_background
@@ -137,7 +138,7 @@ class NoteInput(SubmittableTextArea):
 
 
 class NotesPane(Vertical):
-    """Side panel note editor — shown/hidden on ctrl+o / Escape."""
+    """Side panel note editor — shown/hidden on alt+n / Escape."""
 
     BINDINGS = [Binding("escape", "close_notes", "Close")]
 
@@ -156,5 +157,5 @@ class NotesPane(Vertical):
         self.app.refresh_bindings()
         try:
             self.app.query_one("#user-input").focus()
-        except Exception:
+        except NoMatches:
             pass
