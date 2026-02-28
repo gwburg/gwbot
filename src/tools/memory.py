@@ -139,7 +139,12 @@ tools = [
                     },
                     "tags": {
                         "type": "string",
-                        "description": "Comma-separated tags (e.g. 'preference,food'). Use existing tags when possible.",
+                        "description": (
+                            "Comma-separated tags (e.g. 'preference,food'). Use existing tags when possible. "
+                            "Special tags: 'always' (loaded into system prompt at startup), "
+                            "or a tool-category tag (shell, editor, memory, monarch) to auto-inject "
+                            "the memory into the first tool result from that category each conversation."
+                        ),
                     },
                 },
                 "required": ["content", "tags"],
