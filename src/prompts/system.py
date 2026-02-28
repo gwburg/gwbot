@@ -1,11 +1,13 @@
 """System prompts for the agent."""
 
+from .memory import build_memory_prompt
+
 
 def build_system_prompt(persona: str, tool_categories: list[str]) -> str:
     """Build a system prompt from a persona key and a list of tool categories."""
     base = SYSTEM_PROMPTS[persona]
     tools_section = "\n".join(f"- {cat}" for cat in tool_categories)
-    return (
+    prompt = (
         f"{base}\n\n"
         "You have access to the following tool categories:\n"
         f"{tools_section}\n\n"
@@ -13,6 +15,8 @@ def build_system_prompt(persona: str, tool_categories: list[str]) -> str:
         "your role — you are a general-purpose assistant that happens to have "
         "these capabilities."
     )
+    prompt += build_memory_prompt()
+    return prompt
 
 
 SYSTEM_PROMPTS = {

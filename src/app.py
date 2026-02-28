@@ -9,6 +9,8 @@ from textual.widgets import Footer, Header, Input, Static
 from tools import categories as tool_categories, tools
 
 import models
+from memory import new_conversation_id
+from memory.background import process_conversation
 from prompts import SYSTEM_PROMPTS, build_system_prompt
 from widgets import ModelSelector, StatusBar
 from agent import (
@@ -66,6 +68,7 @@ class AgentApp(App):
         self.initial_task = initial_task
 
         self.client = create_client()
+        self.conversation_id = new_conversation_id()
         self.messages: list[dict] = [{"role": "system", "content": system_prompt}]
         self._streaming_parts: list[str] = []
         self._streaming_widget: Static | None = None
@@ -176,6 +179,17 @@ class AgentApp(App):
         finally:
             self._is_running = False
             self._mount_input()
+            self.run_worker(self._save_memory(), exclusive=False)
+
+    async def _save_memory(self) -> None:
+        """Save conversation log and run background summarization (best-effort)."""
+        try:
+            result = await process_conversation(self.client, self.conversation_id, self.messages)
+            if result:
+                action = result.get("action", "saved")
+                self.notify(f"Memory {action}", timeout=3)
+        except Exception:
+            pass  # Memory is best-effort — never disrupt the chat
 
     def _render_tool(self, connector: str, name: str, args: dict) -> str:
         return f"[{C_DIM}]{connector}[/] [{C_TOOL}]\\[tool][/] [{C_DIM}]{name}({_fmt_args(args)})[/]"
