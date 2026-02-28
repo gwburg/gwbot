@@ -9,10 +9,10 @@ from textual.widgets import Footer, Header, Static
 from tools import CATEGORY_TAGS, categories as tool_categories, tools
 
 from models import MODEL_MAP
-from memory import list_tasks as get_open_tasks, new_conversation_id
+from memory import list_tasks as get_open_tasks, load_conversation, new_conversation_id
 from memory.background import spawn_background
 from prompts import SYSTEM_PROMPTS, build_system_prompt
-from widgets import ModelSelector, NoteScreen, StatusBar, SubmittableTextArea
+from widgets import ConversationSelector, ModelSelector, NoteScreen, StatusBar, SubmittableTextArea
 from agent import (
     AgentEvent,
     RunEndEvent,
@@ -26,6 +26,7 @@ from agent import (
     _fmt_args,
     agent_loop,
     create_client,
+    fetch_model_info,
 )
 
 
@@ -57,13 +58,14 @@ class AgentApp(App):
         Binding("ctrl+o", "open_note", "Note"),
     ]
 
-    def __init__(self, model: str, system_prompt: str, max_iterations: int = 50, initial_note: bool = False):
+    def __init__(self, model: str, system_prompt: str, max_iterations: int = 50, initial_note: bool = False, initial_resume: bool = False):
         super().__init__()
         self.model_alias = model
         self.model_id = MODEL_MAP[model]
         self.system_prompt = system_prompt
         self.max_iterations = max_iterations
         self.initial_note = initial_note
+        self.initial_resume = initial_resume
 
         self.client = create_client()
         self.conversation_id = new_conversation_id()
@@ -90,10 +92,57 @@ class AgentApp(App):
         status.model_name = self.model_id
         self._stream_timer = self.set_interval(0.05, self._flush_stream, pause=True)
         self._spinner_timer = self.set_interval(0.08, self._tick_spinner, pause=True)
-        if self.initial_note:
+        if self.initial_resume:
+            self.run_worker(self._show_resume_selector(), exclusive=True)
+        elif self.initial_note:
             self.action_open_note()
         else:
             self._send_greeting()
+
+    async def _show_resume_selector(self) -> None:
+        """Fetch model info and show the conversation selector."""
+        import asyncio
+        model_info = await asyncio.to_thread(fetch_model_info, self.model_id)
+        context_length = model_info.get("context_length")
+
+        def on_resume(conversation_id: str | None) -> None:
+            if not conversation_id:
+                self._send_greeting()
+                return
+            self._resume_conversation(conversation_id)
+
+        self.push_screen(ConversationSelector(context_length), callback=on_resume)
+
+    def _resume_conversation(self, conversation_id: str) -> None:
+        """Load a previous conversation and render a recap in the chat."""
+        try:
+            prior_messages = load_conversation(conversation_id)
+        except FileNotFoundError:
+            self._append_widget(f"[{C_WARN}]\\[error][/] Conversation not found")
+            self._mount_input()
+            return
+
+        self.conversation_id = conversation_id
+        self._user_sent_message = True
+
+        # Inject prior messages after the system prompt
+        self.messages.extend(prior_messages)
+
+        # Render a visual recap
+        self._append_widget(
+            f"[{C_DIM}]── Resumed conversation {conversation_id} ({len(prior_messages)} messages) ──[/]",
+            classes="message",
+        )
+        for msg in prior_messages:
+            role = msg.get("role")
+            content = msg.get("content")
+            if role == "user" and content:
+                self._append_widget(f"[{C_USER}]\\[user][/] {content}", classes="message user-msg")
+            elif role == "assistant" and content:
+                self._append_widget(f"[{C_AGENT}]\\[agent][/]", classes="agent-label")
+                self._append_widget(Markdown(content), classes="message agent-content")
+
+        self._mount_input()
 
     def _next_msg_id(self) -> str:
         self._msg_counter += 1
@@ -316,6 +365,7 @@ if __name__ == "__main__":
     parser.add_argument("--persona", default="default", choices=SYSTEM_PROMPTS, help=f"System prompt persona. Choices: {', '.join(SYSTEM_PROMPTS)}")
     parser.add_argument("--max-iterations", type=int, default=50)
     parser.add_argument("--note", action="store_true", help="Open note editor on startup")
+    parser.add_argument("--resume", action="store_true", help="Resume a previous conversation")
     args = parser.parse_args()
 
     system_prompt = build_system_prompt(args.persona, tool_categories, CATEGORY_TAGS)
@@ -325,5 +375,6 @@ if __name__ == "__main__":
         system_prompt=system_prompt,
         max_iterations=args.max_iterations,
         initial_note=args.note,
+        initial_resume=args.resume,
     )
     app.run()

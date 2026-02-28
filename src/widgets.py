@@ -6,6 +6,7 @@ from textual.reactive import reactive
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Header, OptionList, Static, TextArea
 from textual.widgets.option_list import Option
+from memory import list_conversations
 from memory.background import spawn_note_background
 from rich.text import Text
 
@@ -45,6 +46,45 @@ class ModelSelector(ModalScreen[str | None]):
     def compose(self):
         options = [Option(f"{alias}  ({model_id})", id=alias) for alias, model_id in MODEL_MAP.items()]
         yield OptionList(*options, id="model-list")
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected):
+        self.dismiss(event.option.id)
+
+    def action_dismiss_modal(self):
+        self.dismiss(None)
+
+
+class ConversationSelector(ModalScreen[str | None]):
+    """Modal screen for selecting a conversation to resume."""
+
+    BINDINGS = [("escape", "dismiss_modal", "Cancel")]
+
+    def __init__(self, context_length: int | None = None):
+        super().__init__()
+        self.context_length = context_length
+
+    def compose(self):
+        conversations = list_conversations()
+        if not conversations:
+            yield Static("No saved conversations.", id="conv-empty")
+            return
+        options = []
+        for conv in conversations:
+            date_str = conv["date"].strftime("%b %-d %-I:%M%p").lower()
+            preview = conv["preview"] or "(no user messages)"
+            tokens = conv["estimated_tokens"]
+            label = f"{date_str}  {preview}"
+
+            if self.context_length and tokens > self.context_length:
+                label += f"  [#6c7086](exceeds context window)[/#6c7086]"
+                options.append(Option(label, id=conv["id"], disabled=True))
+            elif self.context_length and tokens > 0.75 * self.context_length:
+                pct = int(tokens / self.context_length * 100)
+                label += f"  [#f9e2af](~{pct}% of context)[/#f9e2af]"
+                options.append(Option(label, id=conv["id"]))
+            else:
+                options.append(Option(label, id=conv["id"]))
+        yield OptionList(*options, id="conv-list")
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected):
         self.dismiss(event.option.id)

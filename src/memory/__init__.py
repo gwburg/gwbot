@@ -65,6 +65,52 @@ def read_conversation(conversation_id: str) -> str:
     return path.read_text()
 
 
+def load_conversation(conversation_id: str) -> list[dict]:
+    """Load a conversation log as a list of message dicts."""
+    path = _LOW_DIR / f"{conversation_id}.jsonl"
+    if not path.exists():
+        raise FileNotFoundError(f"Conversation '{conversation_id}' not found")
+    messages = []
+    for line in path.read_text().splitlines():
+        if line.strip():
+            messages.append(json.loads(line))
+    return messages
+
+
+def list_conversations() -> list[dict]:
+    """List all saved conversations, newest first.
+
+    Returns list of dicts with id, preview (last user message),
+    date (mtime), and estimated_tokens.
+    """
+    ensure_dirs()
+    results = []
+    for path in _LOW_DIR.glob("*.jsonl"):
+        stat = path.stat()
+        mtime = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
+        total_chars = 0
+        last_user_msg = ""
+        for line in path.read_text().splitlines():
+            if not line.strip():
+                continue
+            total_chars += len(line)
+            try:
+                msg = json.loads(line)
+                if msg.get("role") == "user":
+                    last_user_msg = msg.get("content", "")
+            except json.JSONDecodeError:
+                continue
+        preview = last_user_msg[:80] + ("..." if len(last_user_msg) > 80 else "")
+        results.append({
+            "id": path.stem,
+            "preview": preview,
+            "date": mtime,
+            "estimated_tokens": total_chars // 4,
+        })
+    results.sort(key=lambda r: r["date"], reverse=True)
+    return results
+
+
 # ---------------------------------------------------------------------------
 # High-level: tagged summaries
 # ---------------------------------------------------------------------------
