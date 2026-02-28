@@ -42,16 +42,27 @@ A Textual TUI wrapping an async agentic loop that uses the OpenAI SDK pointed at
 **`src/models.py`** — String constants for OpenRouter model IDs (e.g. `SONNET`, `GEMINI`, `MINIMAX`). The CLI builds its `--model` choices dynamically from this module, so adding a constant here automatically exposes it as a CLI option.
 
 **`src/tools/`** — Tool definitions split into a package:
-- `__init__.py`: Aggregates all tools and mappings from submodules; exposes `tools`, `TOOL_MAPPING`, and `get_tools(names)` for selecting a subset of tools.
-- `bash.py`: `bash` tool — sync. Runs shell commands with a safety blocklist (no sudo, recursive rm, fork bombs, etc.), 30s default timeout, and output truncation.
-- `editor.py`: `text_editor` tool — sync. File operations: `view`, `create`, `str_replace`, `insert`, `undo` (in-process undo history per path).
-- `monarch.py`: Monarch Money tools — async. 21 read-only tools wrapping the `monarchmoney` library (accounts, transactions, budgets, cashflow, etc.). Authenticated via `MONARCH_TOKEN` env var using a `Bearer` token extracted from the browser. Uses a lazy singleton `MonarchMoney` instance.
+- `__init__.py`: Aggregates all tools and mappings from submodules; exposes `tools`, `TOOL_MAPPING`, `TOOL_TO_TAG`, `CATEGORY_TAGS`, and `get_tools(names)`.
+- Each module exports `TAG` (short category key, e.g. `"shell"`), `CATEGORY` (human-readable description), `tools` (JSON schemas), and `TOOL_MAPPING`.
+- `bash.py`: `bash` tool — sync. TAG=`shell`. Runs shell commands with a safety blocklist (no sudo, recursive rm, fork bombs, etc.), 30s default timeout, and output truncation.
+- `editor.py`: `text_editor` tool — sync. TAG=`editor`. File operations: `view`, `create`, `str_replace`, `insert`, `undo` (in-process undo history per path).
+- `memory.py`: Memory tools — sync. TAG=`memory`. Search, read, create, and update persistent memories.
+- `monarch.py`: Monarch Money tools — async. TAG=`monarch`. 21 read-only tools wrapping the `monarchmoney` library (accounts, transactions, budgets, cashflow, etc.). Authenticated via `MONARCH_TOKEN` env var using a `Bearer` token extracted from the browser. Uses a lazy singleton `MonarchMoney` instance.
 
 ### Adding a new tool
 
 1. Implement the function in a new file under `src/tools/`. Use `async def` for async tools, plain `def` for sync — `execute_tool` handles both.
-2. Define its JSON schema in a `tools` list and register it in a `TOOL_MAPPING` dict in that file.
-3. Import and merge both into `src/tools/__init__.py`.
+2. Add `TAG = "mytag"` and `CATEGORY = "description"` constants.
+3. Define its JSON schema in a `tools` list and register it in a `TOOL_MAPPING` dict in that file.
+4. Import and merge into `src/tools/__init__.py` (add to the `_modules` list).
+
+### Knowledge tier
+
+Memories can have an optional `knowledge_tag` (stored as a separate field in frontmatter) for automatic injection:
+- `always` — full content injected into the system prompt at startup via `prompts/memory.py`.
+- Tool-category tags (`shell`, `editor`, `memory`, `monarch`) — content prepended to the first tool result from that category per conversation, handled in `agent.py`'s `agent_loop`.
+
+The `knowledge_tag` is separate from descriptive `tags` — a memory can have both `tags: [finance, etrade]` and `knowledge_tag: monarch`.
 
 ### Selecting a subset of tools
 
