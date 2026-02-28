@@ -89,7 +89,8 @@ ModelSelector {
     height: 1;
     text-align: center;
     background: $surface;
-    color: $text-muted;
+    color: $text;
+    text-style: bold;
     padding: 0 1;
 }
 

@@ -146,7 +146,7 @@ class NotesPane(Vertical):
     BINDINGS = [Binding("escape", "close_notes", "Close", show=False)]
 
     def compose(self):
-        yield Static("[ notes ]", id="notes-header")
+        yield Static("Notes", id="notes-header")
         yield NoteInput(id="notes-input", language=None, soft_wrap=True, show_line_numbers=False)
         yield Static("Enter: Save  |  Escape: Close", id="notes-footer")
 
