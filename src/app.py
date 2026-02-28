@@ -5,15 +5,14 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
 from textual.message import Message
-from textual import events
-from textual.widgets import Footer, Header, Static, TextArea
+from textual.widgets import Footer, Header, Static
 from tools import CATEGORY_TAGS, categories as tool_categories, tools
 
-import models
+from models import MODEL_MAP
 from memory import list_tasks as get_open_tasks, new_conversation_id
 from memory.background import spawn_background
 from prompts import SYSTEM_PROMPTS, build_system_prompt
-from widgets import ModelSelector, NoteScreen, StatusBar
+from widgets import ModelSelector, NoteScreen, StatusBar, SubmittableTextArea
 from agent import (
     AgentEvent,
     RunEndEvent,
@@ -30,8 +29,6 @@ from agent import (
 )
 
 
-MODEL_MAP = {k: v for k, v in vars(models).items() if not k.startswith("_")}
-
 # Catppuccin Mocha palette — modern, easy on the eyes
 C_USER = "#89b4fa"
 C_AGENT = "#a6e3a1"
@@ -40,23 +37,6 @@ C_WARN = "#f38ba8"
 C_DIM = "#6c7086"
 
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-
-
-class SubmittableTextArea(TextArea):
-    """TextArea that submits on Enter and wraps long lines."""
-
-    class Submitted(Message):
-        def __init__(self, value: str) -> None:
-            super().__init__()
-            self.value = value
-
-    def on_key(self, event: events.Key) -> None:
-        if event.key == "enter":
-            event.prevent_default()
-            text = self.text.strip()
-            if text:
-                self.post_message(self.Submitted(text))
-                self.load_text("")
 
 
 class AgentMessage(Message):

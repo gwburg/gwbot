@@ -22,8 +22,12 @@ CATEGORY = "Memory — search, read, and create persistent memories across conve
 # ---------------------------------------------------------------------------
 
 
+def _parse_tags(tags: str) -> list[str]:
+    return _parse_tags(tags)
+
+
 def search_memories(query: str | None = None, tags: str | None = None) -> str:
-    tag_list = [t.strip() for t in tags.split(",")] if tags else None
+    tag_list = _parse_tags(tags) if tags else None
     results = _search_memories(query=query, tags=tag_list)
     if not results:
         return "No memories found."
@@ -39,13 +43,13 @@ def read_conversation(conversation_id: str) -> str:
 
 
 def create_memory(content: str, tags: str, knowledge_tag: str | None = None) -> str:
-    tag_list = [t.strip() for t in tags.split(",")]
+    tag_list = _parse_tags(tags)
     meta = _create_memory(content, tag_list, knowledge_tag=knowledge_tag)
     return json.dumps(meta, indent=2)
 
 
 def update_memory(memory_id: str, content: str | None = None, tags: str | None = None, knowledge_tag: str | None = None) -> str:
-    tag_list = [t.strip() for t in tags.split(",")] if tags else None
+    tag_list = _parse_tags(tags) if tags else None
     try:
         meta = _update_memory(memory_id, content=content, tags=tag_list, knowledge_tag=knowledge_tag)
     except FileNotFoundError as e:
@@ -61,13 +65,13 @@ def list_tags() -> str:
 
 
 def create_todo(content: str, tags: str, owner: str = "user") -> str:
-    tag_list = [t.strip() for t in tags.split(",")]
+    tag_list = _parse_tags(tags)
     meta = _create_memory(content, tag_list, type="todo", owner=owner)
     return json.dumps(meta, indent=2)
 
 
 def create_reminder(content: str, tags: str, deadline: str, owner: str = "user") -> str:
-    tag_list = [t.strip() for t in tags.split(",")]
+    tag_list = _parse_tags(tags)
     meta = _create_memory(content, tag_list, type="reminder", deadline=deadline, owner=owner)
     return json.dumps(meta, indent=2)
 

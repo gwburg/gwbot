@@ -115,6 +115,10 @@ def fetch_model_info(model: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _calc_cost(prompt_toks: int, completion_toks: int, model_info: dict) -> float:
+    return prompt_toks * model_info["prompt_price"] + completion_toks * model_info["completion_price"]
+
+
 def _fmt_args(args: dict, max_len: int = 60) -> str:
     parts = []
     for k, v in args.items():
@@ -158,7 +162,7 @@ async def agent_loop(client, model, messages, tools, max_iterations=50, on_event
             total_prompt_tokens += usage.prompt_tokens or 0
             total_completion_tokens += usage.completion_tokens or 0
             pct = (usage.prompt_tokens / context_length) if context_length and usage.prompt_tokens else None
-            cost = total_prompt_tokens * model_info["prompt_price"] + total_completion_tokens * model_info["completion_price"]
+            cost = _calc_cost(total_prompt_tokens, total_completion_tokens, model_info)
 
             _emit(on_event, UsageEvent(
                 prompt_tokens=usage.prompt_tokens or 0,
@@ -203,7 +207,7 @@ async def agent_loop(client, model, messages, tools, max_iterations=50, on_event
     else:
         _emit(on_event, WarningEvent(message=f"reached max iterations ({max_iterations})"))
 
-    cost = total_prompt_tokens * model_info["prompt_price"] + total_completion_tokens * model_info["completion_price"]
+    cost = _calc_cost(total_prompt_tokens, total_completion_tokens, model_info)
     _emit(on_event, RunEndEvent(
         total_prompt_tokens=total_prompt_tokens,
         total_completion_tokens=total_completion_tokens,

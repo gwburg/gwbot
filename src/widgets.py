@@ -1,4 +1,4 @@
-import models
+from models import MODEL_MAP
 from textual import events
 from textual.binding import Binding
 from textual.message import Message
@@ -43,8 +43,7 @@ class ModelSelector(ModalScreen[str | None]):
     BINDINGS = [("escape", "dismiss_modal", "Cancel")]
 
     def compose(self):
-        model_map = {k: v for k, v in vars(models).items() if not k.startswith("_")}
-        options = [Option(f"{alias}  ({model_id})", id=alias) for alias, model_id in model_map.items()]
+        options = [Option(f"{alias}  ({model_id})", id=alias) for alias, model_id in MODEL_MAP.items()]
         yield OptionList(*options, id="model-list")
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected):
@@ -54,21 +53,25 @@ class ModelSelector(ModalScreen[str | None]):
         self.dismiss(None)
 
 
-class NoteInput(TextArea):
-    """TextArea that submits on Enter instead of inserting a newline."""
+class SubmittableTextArea(TextArea):
+    """TextArea that submits on Enter and wraps long lines."""
 
     class Submitted(Message):
-        def __init__(self, text: str) -> None:
+        def __init__(self, value: str) -> None:
             super().__init__()
-            self.text = text
+            self.value = value
 
     def on_key(self, event: events.Key) -> None:
         if event.key == "enter":
+            event.prevent_default()
             text = self.text.strip()
             if text:
-                event.prevent_default()
                 self.post_message(self.Submitted(text))
                 self.load_text("")
+
+
+class NoteInput(SubmittableTextArea):
+    """SubmittableTextArea used in the note screen."""
 
 
 class NoteScreen(Screen):
@@ -88,7 +91,7 @@ class NoteScreen(Screen):
         self.query_one("#note-input").focus()
 
     def on_note_input_submitted(self, event: NoteInput.Submitted) -> None:
-        spawn_note_background(event.text)
+        spawn_note_background(event.value)
         self.notify("Note saved", timeout=2)
 
     def action_cancel(self):

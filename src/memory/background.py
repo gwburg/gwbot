@@ -21,6 +21,61 @@ from memory import (
 
 DEFAULT_MODEL = models.MINIMAX
 
+
+def _strip_fences(raw: str) -> str:
+    """Remove markdown code fences from LLM output."""
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+        if raw.endswith("```"):
+            raw = raw[:-3]
+        raw = raw.strip()
+    return raw
+
+
+def _apply_operations(operations: list[dict], conversation_id: str | None = None) -> list[dict]:
+    """Process a list of memory operations (create or update) and return results."""
+    results = []
+    for op in operations:
+        if op.get("duplicate_of") and op.get("updated_content"):
+            try:
+                meta = update_memory(
+                    op["duplicate_of"],
+                    content=op["updated_content"],
+                    tags=op.get("tags"),
+                )
+                meta["action"] = "updated"
+                results.append(meta)
+                continue
+            except FileNotFoundError:
+                pass  # Fall through to create
+
+        kwargs = {"content": op["summary"], "tags": op.get("tags", [])}
+        if conversation_id:
+            kwargs["conversation_id"] = conversation_id
+        meta = create_memory(**kwargs)
+        meta["action"] = "created"
+        results.append(meta)
+
+    return results
+
+
+def _spawn(args: list[str], data: dict) -> None:
+    """Write data to a temp file and launch a detached subprocess."""
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", prefix="agent_", delete=False
+    )
+    json.dump(data, tmp)
+    tmp.close()
+
+    subprocess.Popen(
+        [sys.executable, "-m", "memory.background"] + args + [tmp.name],
+        cwd=os.path.join(os.path.dirname(__file__), ".."),
+        start_new_session=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
 _NOTE_PROMPT = """\
 You are a memory manager. A user has written a note. Process it into memories.
 
@@ -142,45 +197,13 @@ async def process_conversation(client, conversation_id: str, messages: list[dict
         temperature=0.2,
     )
 
-    raw = response.choices[0].message.content.strip()
-
-    # Strip markdown fences if present
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
-        if raw.endswith("```"):
-            raw = raw[:-3]
-        raw = raw.strip()
-
+    raw = _strip_fences(response.choices[0].message.content.strip())
     operations = json.loads(raw)
 
     if not isinstance(operations, list) or not operations:
         return []
 
-    # 5. Process each memory operation
-    results = []
-    for op in operations:
-        if op.get("duplicate_of") and op.get("updated_content"):
-            try:
-                meta = update_memory(
-                    op["duplicate_of"],
-                    content=op["updated_content"],
-                    tags=op.get("tags"),
-                )
-                meta["action"] = "updated"
-                results.append(meta)
-                continue
-            except FileNotFoundError:
-                pass  # Fall through to create
-
-        meta = create_memory(
-            content=op["summary"],
-            tags=op.get("tags", []),
-            conversation_id=conversation_id,
-        )
-        meta["action"] = "created"
-        results.append(meta)
-
-    return results
+    return _apply_operations(operations, conversation_id=conversation_id)
 
 
 async def process_note(client, note_text: str, model: str | None = None) -> list[dict]:
@@ -203,61 +226,18 @@ async def process_note(client, note_text: str, model: str | None = None) -> list
         temperature=0.2,
     )
 
-    raw = response.choices[0].message.content.strip()
-
-    # Strip markdown fences if present
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
-        if raw.endswith("```"):
-            raw = raw[:-3]
-        raw = raw.strip()
-
+    raw = _strip_fences(response.choices[0].message.content.strip())
     operations = json.loads(raw)
 
     if not isinstance(operations, list) or not operations:
         return []
 
-    results = []
-    for op in operations:
-        if op.get("duplicate_of") and op.get("updated_content"):
-            try:
-                meta = update_memory(
-                    op["duplicate_of"],
-                    content=op["updated_content"],
-                    tags=op.get("tags"),
-                )
-                meta["action"] = "updated"
-                results.append(meta)
-                continue
-            except FileNotFoundError:
-                pass  # Fall through to create
-
-        meta = create_memory(
-            content=op["summary"],
-            tags=op.get("tags", []),
-        )
-        meta["action"] = "created"
-        results.append(meta)
-
-    return results
+    return _apply_operations(operations)
 
 
 def spawn_note_background(note_text: str) -> None:
     """Fire-and-forget: spawn a detached subprocess to process a note into memories."""
-    tmp = tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", prefix="agent_note_", delete=False
-    )
-    json.dump({"note": note_text}, tmp)
-    tmp.close()
-
-    subprocess.Popen(
-        [sys.executable, "-m", "memory.background", "--note", tmp.name],
-        cwd=os.path.join(os.path.dirname(__file__), ".."),
-        start_new_session=True,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    _spawn(["--note"], {"note": note_text})
 
 
 def spawn_background(conversation_id: str, messages: list[dict]) -> None:
@@ -267,25 +247,8 @@ def spawn_background(conversation_id: str, messages: list[dict]) -> None:
     The LLM summarization runs in a detached subprocess that survives
     TUI exit and terminal closure.
     """
-    # Save the raw conversation log immediately (no network, fast)
     save_conversation(conversation_id, messages)
-
-    # Write conversation data to a temp file (subprocess will clean it up)
-    tmp = tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", prefix="agent_conv_", delete=False
-    )
-    json.dump({"conversation_id": conversation_id, "messages": messages}, tmp)
-    tmp.close()
-
-    # Launch detached subprocess that runs this module's __main__ block
-    subprocess.Popen(
-        [sys.executable, "-m", "memory.background", tmp.name],
-        cwd=os.path.join(os.path.dirname(__file__), ".."),
-        start_new_session=True,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    _spawn([], {"conversation_id": conversation_id, "messages": messages})
 
 
 if __name__ == "__main__":
