@@ -122,7 +122,7 @@ def list_conversations(limit: int = 0, offset: int = 0) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def _write_memory_file(memory_id: str, tags: list[str], content: str, conversation_id: str | None = None, created: str | None = None, knowledge_tag: str | None = None, type: str = "memory", deadline: str | None = None, owner: str | None = None, last_completed: str | None = None) -> dict:
+def _write_memory_file(memory_id: str, tags: list[str], content: str, conversation_id: str | None = None, created: str | None = None, knowledge_tag: str | None = None, type: str = "memory", deadline: str | None = None, owner: str | None = None, recurring: bool = False, last_completed: str | None = None) -> dict:
     """Write a high-level memory .md file with YAML frontmatter."""
     ensure_dirs()
     now = datetime.now(timezone.utc).isoformat()
@@ -138,6 +138,8 @@ def _write_memory_file(memory_id: str, tags: list[str], content: str, conversati
         meta["deadline"] = deadline
     if owner:
         meta["owner"] = owner
+    if recurring:
+        meta["recurring"] = True
     if knowledge_tag:
         meta["knowledge_tag"] = knowledge_tag
     if last_completed:
@@ -166,10 +168,10 @@ def _write_memory_file(memory_id: str, tags: list[str], content: str, conversati
     return meta
 
 
-def create_memory(content: str, tags: list[str], conversation_id: str | None = None, knowledge_tag: str | None = None, type: str = "memory", deadline: str | None = None, owner: str | None = None) -> dict:
+def create_memory(content: str, tags: list[str], conversation_id: str | None = None, knowledge_tag: str | None = None, type: str = "memory", deadline: str | None = None, owner: str | None = None, recurring: bool = False) -> dict:
     """Create a new high-level memory and return its metadata."""
     memory_id = uuid4().hex[:12]
-    return _write_memory_file(memory_id, tags, content, conversation_id, knowledge_tag=knowledge_tag, type=type, deadline=deadline, owner=owner)
+    return _write_memory_file(memory_id, tags, content, conversation_id, knowledge_tag=knowledge_tag, type=type, deadline=deadline, owner=owner, recurring=recurring)
 
 
 def complete_recurring_task(memory_id: str) -> dict:
@@ -188,6 +190,7 @@ def complete_recurring_task(memory_id: str) -> dict:
         type=existing.get("type", "memory"),
         deadline=existing.get("deadline"),
         owner=existing.get("owner"),
+        recurring=existing.get("recurring", False),
         last_completed=today,
     )
 
@@ -202,7 +205,7 @@ def update_memory(memory_id: str, content: str | None = None, tags: list[str] | 
     new_tags = tags if tags is not None else existing["tags"]
     new_knowledge_tag = knowledge_tag if knowledge_tag is not None else existing.get("knowledge_tag")
     new_deadline = deadline if deadline is not None else existing.get("deadline")
-    return _write_memory_file(memory_id, new_tags, new_content, existing.get("conversation_id"), existing["created"], knowledge_tag=new_knowledge_tag, type=existing.get("type", "memory"), deadline=new_deadline, owner=existing.get("owner"), last_completed=existing.get("last_completed"))
+    return _write_memory_file(memory_id, new_tags, new_content, existing.get("conversation_id"), existing["created"], knowledge_tag=new_knowledge_tag, type=existing.get("type", "memory"), deadline=new_deadline, owner=existing.get("owner"), recurring=existing.get("recurring", False), last_completed=existing.get("last_completed"))
 
 
 def delete_memory(memory_id: str) -> None:

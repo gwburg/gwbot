@@ -2,8 +2,6 @@
 
 import json
 
-from datetime import date
-
 from memory import (
     complete_recurring_task as _complete_recurring,
     create_memory as _create_memory,
@@ -82,9 +80,9 @@ def create_todo(content: str, tags: str, owner: str = "user") -> str:
     return json.dumps(meta, indent=2)
 
 
-def create_reminder(content: str, tags: str, deadline: str, owner: str = "user") -> str:
+def create_reminder(content: str, tags: str, deadline: str, owner: str = "user", recurring: bool = False) -> str:
     tag_list = _parse_tags(tags)
-    meta = _create_memory(content, tag_list, type="reminder", deadline=deadline, owner=owner)
+    meta = _create_memory(content, tag_list, type="reminder", deadline=deadline, owner=owner, recurring=recurring)
     return json.dumps(meta, indent=2)
 
 
@@ -93,12 +91,11 @@ def complete_task(memory_id: str) -> str:
         existing = _parse_memory_file(memory_id)
         if existing is None:
             return f"Memory '{memory_id}' not found"
-        # Reminders with a future deadline are recurring — mark done for today
-        # instead of deleting so they reappear on their next due date.
-        deadline = existing.get("deadline")
-        if existing.get("type") == "reminder" and deadline and deadline > date.today().isoformat():
+        # Recurring reminders are marked done for today instead of deleted.
+        if existing.get("recurring"):
             _complete_recurring(memory_id)
-            return f"Reminder '{memory_id}' marked done for today (next due {deadline})."
+            deadline = existing.get("deadline", "unknown")
+            return f"Recurring reminder '{memory_id}' marked done for today (next due {deadline})."
         _delete_memory(memory_id)
     except FileNotFoundError as e:
         return str(e)
@@ -316,7 +313,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "create_reminder",
-            "description": "Create a reminder with a deadline. When completed via complete_task before the deadline, it hides for the day and reappears later. Deleted permanently once the deadline passes.",
+            "description": "Create a reminder with a deadline. Non-recurring reminders are deleted when completed. Recurring reminders are hidden for the day and reappear in future sessions.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -337,6 +334,10 @@ tools = [
                         "enum": ["user", "agent"],
                         "description": "'user' = remind the user about this. 'agent' = something the agent should do by the deadline. Defaults to 'user'.",
                     },
+                    "recurring": {
+                        "type": "boolean",
+                        "description": "If true, completing this reminder hides it for today instead of deleting it. Use for repeating tasks like weekly reports. Defaults to false.",
+                    },
                 },
                 "required": ["content", "tags", "deadline"],
             },
@@ -346,7 +347,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "complete_task",
-            "description": "Mark a TODO or reminder as done. TODOs and past-due reminders are deleted permanently. Reminders with a future deadline are marked done for today and will reappear on their next due date.",
+            "description": "Mark a TODO or reminder as done. Non-recurring tasks are deleted permanently. Recurring reminders are marked done for today and will reappear in future sessions.",
             "parameters": {
                 "type": "object",
                 "properties": {

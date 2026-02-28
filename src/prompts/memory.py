@@ -28,8 +28,8 @@ def build_memory_prompt(category_tags: list[str] | None = None) -> str:
         "- Use `create_todo` for simple tasks and `create_reminder` for deadline-based reminders.\n"
         "- Set `owner` to `user` (default) for things the user needs to do, or `agent` for your own tasks.\n"
         "- Use `list_tasks` to see all open items, `complete_task` to mark done.\n"
-        "- Reminders with a future deadline are recurring: `complete_task` hides them for today, "
-        "and they reappear in future sessions. Past-due reminders and TODOs are deleted permanently.\n"
+        "- Reminders can be `recurring`: `complete_task` on a recurring reminder hides it for today, "
+        "and it reappears in future sessions. Non-recurring tasks are deleted permanently.\n"
         "- All open tasks are automatically loaded into this system prompt at startup (see below), "
         "so you don't need to call `list_tasks` to check — just read the sections below.\n"
         "- For user tasks: proactively remind the user, especially about overdue items.\n"
@@ -77,5 +77,6 @@ def _format_task(t: dict, today: str) -> str:
     deadline = t.get("deadline")
     if ttype == "reminder" and deadline:
         overdue = " **OVERDUE**" if deadline < today else ""
-        return f"\n- [{tid}] REMINDER (due {deadline}{overdue}): {content}"
+        recur = "recurring, " if t.get("recurring") else ""
+        return f"\n- [{tid}] REMINDER ({recur}due {deadline}{overdue}): {content}"
     return f"\n- [{tid}] TODO: {content}"
