@@ -52,7 +52,7 @@ Screen {
     height: auto;
     max-height: 8;
     border: none;
-    background: transparent;
+    background: $background;
     padding: 0;
     scrollbar-size: 0 0;
 }
@@ -62,7 +62,7 @@ Screen {
 }
 
 #user-input .text-area--cursor-line {
-    background: transparent;
+    background: $background;
 }
 
 #status-bar {
