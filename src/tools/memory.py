@@ -23,7 +23,7 @@ CATEGORY = "Memory — search, read, and create persistent memories across conve
 
 
 def _parse_tags(tags: str) -> list[str]:
-    return _parse_tags(tags)
+    return [t.strip() for t in tags.split(",")]
 
 
 def search_memories(query: str | None = None, tags: str | None = None) -> str:
