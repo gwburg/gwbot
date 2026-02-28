@@ -57,6 +57,14 @@ def update_memory(memory_id: str, content: str | None = None, tags: str | None =
     return json.dumps(meta, indent=2)
 
 
+def delete_memory(memory_id: str) -> str:
+    try:
+        _delete_memory(memory_id)
+    except FileNotFoundError as e:
+        return str(e)
+    return f"Memory '{memory_id}' deleted."
+
+
 def list_tags() -> str:
     tags = _get_tags()
     if not tags:
@@ -239,6 +247,23 @@ tools = [
     {
         "type": "function",
         "function": {
+            "name": "delete_memory",
+            "description": "Permanently delete a memory by its ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "memory_id": {
+                        "type": "string",
+                        "description": "The memory ID to delete",
+                    },
+                },
+                "required": ["memory_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "list_tags",
             "description": "List all known memory tags.",
             "parameters": {
@@ -342,6 +367,7 @@ TOOL_MAPPING = {
     "read_conversation": read_conversation,
     "create_memory": create_memory,
     "update_memory": update_memory,
+    "delete_memory": delete_memory,
     "list_tags": list_tags,
     "create_todo": create_todo,
     "create_reminder": create_reminder,
