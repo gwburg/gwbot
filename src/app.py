@@ -53,7 +53,8 @@ class AgentApp(App):
     TITLE = "Agent"
 
     BINDINGS = [
-        Binding("alt+q", "quit", "Quit"),
+        Binding("ctrl+q", "quit", "Quit"),
+        Binding("ctrl+c", "ctrl_c", "Quit", show=False, priority=True),
         Binding("alt+m", "switch_model", "Switch Model"),
         Binding("alt+n", "open_note", "Note"),
         Binding("alt+left", "focus_chat", "Chat", priority=True),
@@ -81,6 +82,7 @@ class AgentApp(App):
         self._tool_widgets: list[tuple[Static, str, dict]] = []  # (widget, name, args)
         self._has_agent_label = False  # whether [agent] label has been mounted this turn
         self._user_sent_message = False  # whether the user has typed a message
+        self._ctrl_c_pressed = False  # tracks double ctrl+c for quit
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -344,6 +346,18 @@ class AgentApp(App):
             except Exception:
                 pass  # Memory is best-effort — never block exit
         self.exit()
+
+    def action_ctrl_c(self) -> None:
+        """Quit on double ctrl+c; warn on first press."""
+        if self._ctrl_c_pressed:
+            self.run_worker(self.action_quit())
+        else:
+            self._ctrl_c_pressed = True
+            self.notify("Press ctrl+c again to quit", timeout=2)
+            self.set_timer(2, self._reset_ctrl_c)
+
+    def _reset_ctrl_c(self) -> None:
+        self._ctrl_c_pressed = False
 
     def action_open_note(self) -> None:
         pane = self.query_one("#notes-pane", NotesPane)
