@@ -1,5 +1,7 @@
 import models
+from textual import events
 from textual.binding import Binding
+from textual.message import Message
 from textual.reactive import reactive
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Header, OptionList, Static, TextArea
@@ -52,6 +54,23 @@ class ModelSelector(ModalScreen[str | None]):
         self.dismiss(None)
 
 
+class NoteInput(TextArea):
+    """TextArea that submits on Enter instead of inserting a newline."""
+
+    class Submitted(Message):
+        def __init__(self, text: str) -> None:
+            super().__init__()
+            self.text = text
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "enter":
+            text = self.text.strip()
+            if text:
+                event.prevent_default()
+                self.post_message(self.Submitted(text))
+                self.load_text("")
+
+
 class NoteScreen(Screen):
     """Full-screen note editor for quickly saving memories."""
 
@@ -62,21 +81,15 @@ class NoteScreen(Screen):
     def compose(self):
         yield Header()
         yield Static("[bold] New Note [/bold]", id="note-header")
-        yield TextArea(id="note-input", language=None, soft_wrap=True, show_line_numbers=False)
+        yield NoteInput(id="note-input", language=None, soft_wrap=True, show_line_numbers=False)
         yield Static("Enter: Save  |  Escape: Close", id="note-footer")
 
     def on_mount(self):
         self.query_one("#note-input").focus()
 
-    def on_key(self, event):
-        if event.key == "enter":
-            ta = self.query_one("#note-input", TextArea)
-            text = ta.text.strip()
-            if text:
-                event.prevent_default()
-                spawn_note_background(text)
-                ta.load_text("")
-                self.notify("Note saved", timeout=2)
+    def on_note_input_submitted(self, event: NoteInput.Submitted) -> None:
+        spawn_note_background(event.text)
+        self.notify("Note saved", timeout=2)
 
     def action_cancel(self):
         self.dismiss(None)
