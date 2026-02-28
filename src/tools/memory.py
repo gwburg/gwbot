@@ -2,7 +2,10 @@
 
 import json
 
+from datetime import date
+
 from memory import (
+    complete_recurring_task as _complete_recurring,
     create_memory as _create_memory,
     delete_memory as _delete_memory,
     get_tags as _get_tags,
@@ -11,6 +14,7 @@ from memory import (
     read_memory as _read_memory,
     search_memories as _search_memories,
     update_memory as _update_memory,
+    _parse_memory_file,
 )
 
 TAG = "memory"
@@ -86,6 +90,15 @@ def create_reminder(content: str, tags: str, deadline: str, owner: str = "user")
 
 def complete_task(memory_id: str) -> str:
     try:
+        existing = _parse_memory_file(memory_id)
+        if existing is None:
+            return f"Memory '{memory_id}' not found"
+        # Reminders with a future deadline are recurring — mark done for today
+        # instead of deleting so they reappear on their next due date.
+        deadline = existing.get("deadline")
+        if existing.get("type") == "reminder" and deadline and deadline > date.today().isoformat():
+            _complete_recurring(memory_id)
+            return f"Reminder '{memory_id}' marked done for today (next due {deadline})."
         _delete_memory(memory_id)
     except FileNotFoundError as e:
         return str(e)
@@ -303,7 +316,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "create_reminder",
-            "description": "Create a reminder with a deadline. Deleted when completed via complete_task.",
+            "description": "Create a reminder with a deadline. When completed via complete_task before the deadline, it hides for the day and reappears later. Deleted permanently once the deadline passes.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -333,7 +346,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "complete_task",
-            "description": "Mark a TODO or reminder as done. This deletes it permanently.",
+            "description": "Mark a TODO or reminder as done. TODOs and past-due reminders are deleted permanently. Reminders with a future deadline are marked done for today and will reappear on their next due date.",
             "parameters": {
                 "type": "object",
                 "properties": {

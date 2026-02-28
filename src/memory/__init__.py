@@ -122,7 +122,7 @@ def list_conversations(limit: int = 0, offset: int = 0) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def _write_memory_file(memory_id: str, tags: list[str], content: str, conversation_id: str | None = None, created: str | None = None, knowledge_tag: str | None = None, type: str = "memory", deadline: str | None = None, owner: str | None = None) -> dict:
+def _write_memory_file(memory_id: str, tags: list[str], content: str, conversation_id: str | None = None, created: str | None = None, knowledge_tag: str | None = None, type: str = "memory", deadline: str | None = None, owner: str | None = None, last_completed: str | None = None) -> dict:
     """Write a high-level memory .md file with YAML frontmatter."""
     ensure_dirs()
     now = datetime.now(timezone.utc).isoformat()
@@ -140,6 +140,8 @@ def _write_memory_file(memory_id: str, tags: list[str], content: str, conversati
         meta["owner"] = owner
     if knowledge_tag:
         meta["knowledge_tag"] = knowledge_tag
+    if last_completed:
+        meta["last_completed"] = last_completed
     if conversation_id:
         meta["conversation_id"] = conversation_id
 
@@ -170,6 +172,26 @@ def create_memory(content: str, tags: list[str], conversation_id: str | None = N
     return _write_memory_file(memory_id, tags, content, conversation_id, knowledge_tag=knowledge_tag, type=type, deadline=deadline, owner=owner)
 
 
+def complete_recurring_task(memory_id: str) -> dict:
+    """Mark a recurring reminder as done for today instead of deleting it."""
+    existing = _parse_memory_file(memory_id)
+    if existing is None:
+        raise FileNotFoundError(f"Memory '{memory_id}' not found")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return _write_memory_file(
+        memory_id,
+        existing["tags"],
+        existing["content"],
+        existing.get("conversation_id"),
+        existing["created"],
+        knowledge_tag=existing.get("knowledge_tag"),
+        type=existing.get("type", "memory"),
+        deadline=existing.get("deadline"),
+        owner=existing.get("owner"),
+        last_completed=today,
+    )
+
+
 def update_memory(memory_id: str, content: str | None = None, tags: list[str] | None = None, knowledge_tag: str | None = None, deadline: str | None = None) -> dict:
     """Update an existing memory's content and/or tags."""
     existing = _parse_memory_file(memory_id)
@@ -180,7 +202,7 @@ def update_memory(memory_id: str, content: str | None = None, tags: list[str] | 
     new_tags = tags if tags is not None else existing["tags"]
     new_knowledge_tag = knowledge_tag if knowledge_tag is not None else existing.get("knowledge_tag")
     new_deadline = deadline if deadline is not None else existing.get("deadline")
-    return _write_memory_file(memory_id, new_tags, new_content, existing.get("conversation_id"), existing["created"], knowledge_tag=new_knowledge_tag, type=existing.get("type", "memory"), deadline=new_deadline, owner=existing.get("owner"))
+    return _write_memory_file(memory_id, new_tags, new_content, existing.get("conversation_id"), existing["created"], knowledge_tag=new_knowledge_tag, type=existing.get("type", "memory"), deadline=new_deadline, owner=existing.get("owner"), last_completed=existing.get("last_completed"))
 
 
 def delete_memory(memory_id: str) -> None:
@@ -197,8 +219,16 @@ def delete_memory(memory_id: str) -> None:
 
 
 def list_tasks() -> list[dict]:
-    """Return all todo/reminder memories, reminders sorted by deadline first."""
-    tasks = [m for m in list_all_memories() if m.get("type") in ("todo", "reminder")]
+    """Return all todo/reminder memories, reminders sorted by deadline first.
+
+    Reminders completed today (last_completed == today) are excluded.
+    """
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    tasks = [
+        m for m in list_all_memories()
+        if m.get("type") in ("todo", "reminder")
+        and m.get("last_completed") != today
+    ]
     # Reminders with deadline first (sorted by deadline), then todos
     reminders = sorted(
         [t for t in tasks if t.get("type") == "reminder"],
