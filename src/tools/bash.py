@@ -1,6 +1,8 @@
 import re
 import subprocess
 
+CATEGORY = "Shell — run any shell command"
+
 # Each entry is (regex_pattern, human_readable_reason).
 # Checked in order; first match blocks the command.
 _BLOCKED = [

@@ -1,1 +1,1 @@
-from .system import SYSTEM_PROMPTS, DEFAULT_SYSTEM_PROMPT
+from .system import SYSTEM_PROMPTS, build_system_prompt

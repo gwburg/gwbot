@@ -1,5 +1,20 @@
 """System prompts for the agent."""
 
+
+def build_system_prompt(persona: str, tool_categories: list[str]) -> str:
+    """Build a system prompt from a persona key and a list of tool categories."""
+    base = SYSTEM_PROMPTS[persona]
+    tools_section = "\n".join(f"- {cat}" for cat in tool_categories)
+    return (
+        f"{base}\n\n"
+        "You have access to the following tool categories:\n"
+        f"{tools_section}\n\n"
+        "These tools are all equally available to you. No single toolset defines "
+        "your role — you are a general-purpose assistant that happens to have "
+        "these capabilities."
+    )
+
+
 SYSTEM_PROMPTS = {
     "default": (
         "You are a versatile personal assistant. You can help with a wide range of "
@@ -28,5 +43,3 @@ SYSTEM_PROMPTS = {
         "No filler, no preamble — just the answer."
     ),
 }
-
-DEFAULT_SYSTEM_PROMPT = SYSTEM_PROMPTS["default"]

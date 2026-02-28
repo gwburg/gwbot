@@ -1,5 +1,7 @@
 from pathlib import Path
 
+CATEGORY = "File editing — read, create, and edit text files"
+
 # Maps file path -> stack of previous contents (for undo)
 _history: dict[str, list[str]] = {}
 

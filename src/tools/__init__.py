@@ -1,8 +1,9 @@
-from .bash import tools as _bash_tools, TOOL_MAPPING as _bash_map
-from .editor import tools as _editor_tools, TOOL_MAPPING as _editor_map
-from .monarch import tools as _monarch_tools, TOOL_MAPPING as _monarch_map
+from .bash import tools as _bash_tools, TOOL_MAPPING as _bash_map, CATEGORY as _bash_cat
+from .editor import tools as _editor_tools, TOOL_MAPPING as _editor_map, CATEGORY as _editor_cat
+from .monarch import tools as _monarch_tools, TOOL_MAPPING as _monarch_map, CATEGORY as _monarch_cat
 
 tools = _bash_tools + _editor_tools + _monarch_tools
+categories = [_bash_cat, _editor_cat, _monarch_cat]
 
 TOOL_MAPPING = {
     **_bash_map,

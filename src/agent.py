@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 import os
 from dataclasses import dataclass
@@ -307,7 +308,7 @@ async def execute_tool(tool_call: dict) -> dict:
         func = TOOL_MAPPING[name]
         raw_args = tool_call["function"]["arguments"]
         kwargs = json.loads(raw_args) if raw_args else {}
-        if asyncio.iscoroutinefunction(func):
+        if inspect.iscoroutinefunction(func):
             tool_output = await func(**kwargs)
         else:
             tool_output = await asyncio.to_thread(func, **kwargs)

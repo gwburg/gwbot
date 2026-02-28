@@ -6,10 +6,10 @@ from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
 from textual.message import Message
 from textual.widgets import Footer, Header, Input, Static
-from tools import tools
+from tools import categories as tool_categories, tools
 
 import models
-from prompts import SYSTEM_PROMPTS, DEFAULT_SYSTEM_PROMPT
+from prompts import SYSTEM_PROMPTS, build_system_prompt
 from widgets import ModelSelector, StatusBar
 from agent import (
     AgentEvent,
@@ -281,7 +281,7 @@ if __name__ == "__main__":
     parser.add_argument("--log", metavar="PATH", help="Write a JSONL log to this file")
     args = parser.parse_args()
 
-    system_prompt = args.system_prompt or SYSTEM_PROMPTS[args.persona]
+    system_prompt = args.system_prompt or build_system_prompt(args.persona, tool_categories)
 
     app = AgentApp(
         model=args.model,
