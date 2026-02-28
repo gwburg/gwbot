@@ -92,6 +92,17 @@ def _write_memory_file(memory_id: str, tags: list[str], content: str, conversati
     path.write_text(doc)
 
     _add_tags(tags)
+
+    # Best-effort embedding — non-fatal on failure
+    try:
+        from memory.embeddings import compute_embedding, store_embedding
+
+        vector = compute_embedding(content)
+        if vector:
+            store_embedding(memory_id, vector)
+    except Exception:
+        pass
+
     return meta
 
 
@@ -154,33 +165,66 @@ def list_all_memories() -> list[dict]:
     return memories
 
 
+def _build_result(mem: dict, score: float | None = None) -> dict:
+    content = mem.get("content", "")
+    result = {
+        "id": mem.get("id"),
+        "tags": mem.get("tags", []),
+        "preview": content[:200] + ("..." if len(content) > 200 else ""),
+        "conversation_id": mem.get("conversation_id"),
+        "created": mem.get("created"),
+        "updated": mem.get("updated"),
+    }
+    if score is not None:
+        result["score"] = round(score, 3)
+    return result
+
+
 def search_memories(query: str | None = None, tags: list[str] | None = None) -> list[dict]:
-    """Filter memories by keyword and/or tag. Returns id, tags, and a preview."""
-    all_memories = list_all_memories()
-    results = []
-    for mem in all_memories:
-        # Tag filter
-        if tags:
-            mem_tags = mem.get("tags", [])
-            if not any(t in mem_tags for t in tags):
-                continue
-        # Keyword filter
-        if query:
-            content = mem.get("content", "")
-            if query.lower() not in content.lower():
-                continue
-        # Build preview
+    """Hybrid search: tag filtering + semantic similarity + keyword bonus."""
+    candidates = list_all_memories()
+
+    # Tag filter (cheap, do first)
+    if tags:
+        candidates = [m for m in candidates if any(t in m.get("tags", []) for t in tags)]
+
+    if not query:
+        return [_build_result(m) for m in candidates]
+
+    # Try to compute query embedding for semantic search
+    query_vec = None
+    stored_embeddings: dict[str, list[float]] = {}
+    try:
+        from memory.embeddings import (
+            compute_embedding,
+            cosine_similarity,
+            get_all_embeddings,
+        )
+
+        query_vec = compute_embedding(query)
+        if query_vec:
+            stored_embeddings = get_all_embeddings()
+    except Exception:
+        pass
+
+    scored: list[tuple[float, dict]] = []
+    for mem in candidates:
+        mid = mem.get("id")
         content = mem.get("content", "")
-        preview = content[:200] + ("..." if len(content) > 200 else "")
-        results.append({
-            "id": mem.get("id"),
-            "tags": mem.get("tags", []),
-            "preview": preview,
-            "conversation_id": mem.get("conversation_id"),
-            "created": mem.get("created"),
-            "updated": mem.get("updated"),
-        })
-    return results
+
+        keyword_match = query.lower() in content.lower()
+
+        sim = 0.0
+        if query_vec and mid in stored_embeddings:
+            sim = cosine_similarity(query_vec, stored_embeddings[mid])
+
+        score = sim + (0.3 if keyword_match else 0.0)
+
+        if keyword_match or sim >= 0.3:
+            scored.append((score, mem))
+
+    scored.sort(key=lambda x: -x[0])
+    return [_build_result(m, score=s) for s, m in scored]
 
 
 # ---------------------------------------------------------------------------
