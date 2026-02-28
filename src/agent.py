@@ -3,7 +3,6 @@ import inspect
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Callable
 
 import openai
@@ -112,26 +111,6 @@ def fetch_model_info(model: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
-
-
-def _log_writer(path: str | None):
-    """Return a write_log(type, **data) function. No-op if path is None."""
-    if path is None:
-        return lambda event_type, **data: None
-
-    fh = open(path, "a")
-
-    def write_log(event_type: str, **data):
-        entry = {"ts": datetime.now(timezone.utc).isoformat(), "type": event_type, **data}
-        fh.write(json.dumps(entry) + "\n")
-        fh.flush()
-
-    return write_log
-
-
-# ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
 
@@ -156,10 +135,9 @@ def _emit(on_event: Callable | None, event: AgentEvent):
         on_event(event)
 
 
-async def agent_loop(client, model, messages, tools, max_iterations=50, log_path=None, on_event: Callable[[AgentEvent], None] | None = None):
+async def agent_loop(client, model, messages, tools, max_iterations=50, on_event: Callable[[AgentEvent], None] | None = None):
     model_info = await asyncio.to_thread(fetch_model_info, model)
     context_length = model_info["context_length"]
-    write_log = _log_writer(log_path)
 
     total_prompt_tokens = 0
     total_completion_tokens = 0
@@ -200,16 +178,6 @@ async def agent_loop(client, model, messages, tools, max_iterations=50, log_path
             args = json.loads(raw) if raw else {}
             _emit(on_event, ToolCallEvent(name=tc["function"]["name"], args=args))
 
-        write_log(
-            "llm",
-            content=content,
-            tool_calls=[
-                {"name": tc["function"]["name"], "args": json.loads(tc["function"]["arguments"] or "{}")}
-                for tc in (tool_calls or [])
-            ],
-            usage={"prompt": usage.prompt_tokens, "completion": usage.completion_tokens} if usage else None,
-        )
-
         if not tool_calls:
             break
 
@@ -232,12 +200,6 @@ async def agent_loop(client, model, messages, tools, max_iterations=50, log_path
                 call_id=tc["id"],
                 output=tool_output_msg["content"],
             ))
-            write_log(
-                "tool_result",
-                tool=tc["function"]["name"],
-                call_id=tc["id"],
-                output=tool_output_msg["content"],
-            )
     else:
         _emit(on_event, WarningEvent(message=f"reached max iterations ({max_iterations})"))
 
@@ -247,12 +209,6 @@ async def agent_loop(client, model, messages, tools, max_iterations=50, log_path
         total_completion_tokens=total_completion_tokens,
         cost_usd=cost,
     ))
-    write_log(
-        "run_end",
-        prompt_tokens=total_prompt_tokens,
-        completion_tokens=total_completion_tokens,
-        cost_usd=cost,
-    )
 
     return messages[-1]
 

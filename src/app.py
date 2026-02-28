@@ -10,7 +10,7 @@ from textual.widgets import Footer, Header, Static, TextArea
 from tools import CATEGORY_TAGS, categories as tool_categories, tools
 
 import models
-from memory import new_conversation_id
+from memory import list_tasks as get_open_tasks, new_conversation_id
 from memory.background import spawn_background
 from prompts import SYSTEM_PROMPTS, build_system_prompt
 from widgets import ModelSelector, NoteScreen, StatusBar
@@ -77,14 +77,12 @@ class AgentApp(App):
         Binding("ctrl+o", "open_note", "Note"),
     ]
 
-    def __init__(self, model: str, system_prompt: str, max_iterations: int = 50, log_path: str | None = None, initial_task: str | None = None, initial_note: bool = False):
+    def __init__(self, model: str, system_prompt: str, max_iterations: int = 50, initial_note: bool = False):
         super().__init__()
         self.model_alias = model
         self.model_id = MODEL_MAP[model]
         self.system_prompt = system_prompt
         self.max_iterations = max_iterations
-        self.log_path = log_path
-        self.initial_task = initial_task
         self.initial_note = initial_note
 
         self.client = create_client()
@@ -98,6 +96,7 @@ class AgentApp(App):
         self._spinner_frame = 0
         self._tool_widgets: list[tuple[Static, str, dict]] = []  # (widget, name, args)
         self._has_agent_label = False  # whether [agent] label has been mounted this turn
+        self._user_sent_message = False  # whether the user has typed a message
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -113,10 +112,8 @@ class AgentApp(App):
         self._spinner_timer = self.set_interval(0.08, self._tick_spinner, pause=True)
         if self.initial_note:
             self.action_open_note()
-        elif self.initial_task:
-            self._submit_message(self.initial_task)
         else:
-            self._mount_input()
+            self._send_greeting()
 
     def _next_msg_id(self) -> str:
         self._msg_counter += 1
@@ -173,10 +170,36 @@ class AgentApp(App):
         row.remove()
         self._submit_message(text)
 
+    def _send_greeting(self) -> None:
+        """Send an automatic greeting, including any open TODOs/reminders."""
+        tasks = get_open_tasks()
+        if tasks:
+            lines = []
+            for t in tasks:
+                preview = (t.get("content", "") or "")[:200]
+                kind = t.get("type", "todo")
+                deadline = t.get("deadline")
+                if deadline:
+                    lines.append(f"- [{kind}] {preview} (due {deadline})")
+                else:
+                    lines.append(f"- [{kind}] {preview}")
+            task_block = "\n".join(lines)
+            greeting = (
+                f"Greet the user (briefly, based on time of day). "
+                f"Then let them know they have the following open tasks:\n{task_block}"
+            )
+        else:
+            greeting = "Greet the user briefly based on the time of day."
+        self.messages.append({"role": "user", "content": greeting})
+        self._is_running = True
+        self._show_spinner()
+        self.run_worker(self._run_agent(), exclusive=True)
+
     def _submit_message(self, text: str) -> None:
         if self._is_running:
             return
 
+        self._user_sent_message = True
         self._append_widget(f"[{C_USER}]\\[user][/] {text}", classes="message user-msg")
 
         self.messages.append({"role": "user", "content": text})
@@ -192,7 +215,6 @@ class AgentApp(App):
                 self.messages,
                 tools,
                 max_iterations=self.max_iterations,
-                log_path=self.log_path,
                 on_event=lambda e: self.post_message(AgentMessage(e)),
             )
         except Exception as e:
@@ -283,8 +305,7 @@ class AgentApp(App):
 
     async def action_quit(self) -> None:
         """Spawn background memory process, then quit immediately."""
-        has_conversation = any(m.get("role") != "system" for m in self.messages)
-        if has_conversation:
+        if self._user_sent_message:
             try:
                 spawn_background(self.conversation_id, self.messages)
             except Exception:
@@ -311,23 +332,18 @@ class AgentApp(App):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the agent TUI")
-    parser.add_argument("task", nargs="?", default=None, help="Initial task to send")
     parser.add_argument("--model", default="MINIMAX", choices=MODEL_MAP, metavar="MODEL", help=f"Model alias. Choices: {', '.join(MODEL_MAP)}")
-    parser.add_argument("--system-prompt", default=None, help="Override system prompt text directly")
     parser.add_argument("--persona", default="default", choices=SYSTEM_PROMPTS, help=f"System prompt persona. Choices: {', '.join(SYSTEM_PROMPTS)}")
     parser.add_argument("--max-iterations", type=int, default=50)
-    parser.add_argument("--log", metavar="PATH", help="Write a JSONL log to this file")
     parser.add_argument("--note", action="store_true", help="Open note editor on startup")
     args = parser.parse_args()
 
-    system_prompt = args.system_prompt or build_system_prompt(args.persona, tool_categories, CATEGORY_TAGS)
+    system_prompt = build_system_prompt(args.persona, tool_categories, CATEGORY_TAGS)
 
     app = AgentApp(
         model=args.model,
         system_prompt=system_prompt,
         max_iterations=args.max_iterations,
-        log_path=args.log,
-        initial_task=args.task,
         initial_note=args.note,
     )
     app.run()

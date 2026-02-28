@@ -9,10 +9,7 @@ This project uses `uv` for package management.
 ```bash
 # Launch the TUI (interactive chat)
 uv run src/app.py
-uv run src/app.py --model SONNET --log run.jsonl
-
-# Launch with an initial task
-uv run src/app.py "your task here"
+uv run src/app.py --model SONNET
 
 # Add a dependency
 uv add <package>
@@ -27,10 +24,11 @@ A Textual TUI wrapping an async agentic loop that uses the OpenAI SDK pointed at
 **`src/app.py`** — Textual App entry point:
 - `AgentApp`: Main TUI application. Scrollable chat history (`RichLog`), streaming assistant output via a `Static` widget with 50ms flush timer, status bar showing model/tokens/cost/context usage, input box at bottom. Model switching via `Ctrl+N`.
 - Runs `agent_loop` in a Textual worker. Agent events are delivered via `post_message(AgentMessage(event))` and routed in `on_agent_message()`.
-- CLI: `task` positional arg, `--model` accepts aliases from `models.py`, `--max-iterations`, `--log`.
+- On startup, the agent automatically greets the user and surfaces any open TODOs/reminders.
+- CLI: `--model` accepts aliases from `models.py`, `--max-iterations`, `--persona`, `--note`.
 
 **`src/agent.py`** — Core agent logic (UI-independent):
-- `agent_loop(client, model, messages, tools, max_iterations, log_path, on_event)`: Async. Runs the loop, emitting `AgentEvent` dataclasses via the `on_event` callback instead of printing.
+- `agent_loop(client, model, messages, tools, max_iterations, on_event)`: Async. Runs the loop, emitting `AgentEvent` dataclasses via the `on_event` callback instead of printing.
 - `call_llm()`: Async. Streams the response from OpenRouter, emitting `StreamStart`, `StreamChunk`, `StreamEnd` events. Wrapped with `tenacity` to retry up to 3x on rate limit, connection, and server errors.
 - `execute_tool(tool_call)`: Async. Dispatches a tool call by name via `TOOL_MAPPING`. Awaits async tools directly; runs sync tools via `asyncio.to_thread`.
 - Event types: `StreamStart`, `StreamChunk`, `StreamEnd`, `ToolCallEvent`, `ToolResultEvent`, `UsageEvent`, `WarningEvent`, `RunEndEvent`.
