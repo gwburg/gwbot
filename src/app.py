@@ -53,11 +53,11 @@ class AgentApp(App):
     TITLE = "Agent"
 
     BINDINGS = [
-        Binding("ctrl+q", "quit", "Quit"),
-        Binding("ctrl+n", "switch_model", "Switch Model"),
-        Binding("ctrl+o", "open_note", "Note"),
-        Binding("ctrl+left", "focus_chat", "Chat", priority=True),
-        Binding("ctrl+right", "focus_notes", "Notes", priority=True),
+        Binding("alt+q", "quit", "Quit"),
+        Binding("alt+m", "switch_model", "Switch Model"),
+        Binding("alt+n", "open_note", "Note"),
+        Binding("alt+left", "focus_chat", "Chat", priority=True),
+        Binding("alt+right", "focus_notes", "Notes", priority=True),
     ]
 
     def __init__(self, model: str, system_prompt: str, max_iterations: int = 50, initial_note: bool = False, initial_resume: bool = False):
@@ -347,8 +347,15 @@ class AgentApp(App):
 
     def action_open_note(self) -> None:
         pane = self.query_one("#notes-pane", NotesPane)
-        pane.display = True
-        pane.query_one("#notes-input").focus()
+        if pane.display:
+            pane.display = False
+            try:
+                self.query_one("#user-input").focus()
+            except Exception:
+                pass
+        else:
+            pane.display = True
+            pane.query_one("#notes-input").focus()
 
     def action_focus_chat(self) -> None:
         try:

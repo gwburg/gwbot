@@ -8,7 +8,7 @@ Screen {
 }
 
 #chat-scroll {
-    width: 3fr;
+    width: 2fr;
     height: 100%;
     scrollbar-size: 1 1;
     padding: 1 0 0 0;
