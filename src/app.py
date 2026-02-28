@@ -11,7 +11,7 @@ from tools import CATEGORY_TAGS, categories as tool_categories, tools
 
 from models import MODEL_MAP
 from memory import list_tasks as get_open_tasks, load_conversation, new_conversation_id
-from memory.background import spawn_background
+from memory.background import process_note, spawn_background
 from prompts import SYSTEM_PROMPTS, build_system_prompt
 from widgets import ConversationSelector, ModelSelector, NotesPane, StatusBar, SubmittableTextArea
 from agent import (
@@ -99,6 +99,8 @@ class AgentApp(App):
         status.model_name = self.model_id
         self._stream_timer = self.set_interval(0.05, self._flush_stream, pause=True)
         self._spinner_timer = self.set_interval(0.08, self._tick_spinner, pause=True)
+        self._note_spinner_frame = 0
+        self._note_spinner_timer = self.set_interval(0.08, self._tick_note_spinner, pause=True)
         if self.initial_resume:
             self.run_worker(self._show_resume_selector(), exclusive=True)
         elif self.initial_note:
@@ -185,6 +187,33 @@ class AgentApp(App):
         if self._spinner_widget:
             self._spinner_frame = (self._spinner_frame + 1) % len(SPINNER)
             self._spinner_widget.update(f"[{C_DIM}]{SPINNER[self._spinner_frame]}[/]")
+
+    def _tick_note_spinner(self) -> None:
+        """Advance the notes footer spinner by one frame."""
+        self._note_spinner_frame = (self._note_spinner_frame + 1) % len(SPINNER)
+        self._set_notes_footer(f"{SPINNER[self._note_spinner_frame]} Committing to memory…")
+
+    def _set_notes_footer(self, text: str) -> None:
+        try:
+            footer = self.query_one("#notes-footer", Static)
+            footer.update(f"[{C_DIM}]{text}[/]")
+        except NoMatches:
+            pass
+
+    def on_notes_pane_note_submitted(self, event: NotesPane.NoteSubmitted) -> None:
+        self._note_spinner_frame = 0
+        self._note_spinner_timer.resume()
+        self.run_worker(self._run_note_processing(event.text), exclusive=False)
+
+    async def _run_note_processing(self, text: str) -> None:
+        try:
+            await process_note(self.client, text)
+            result = "✓ Note remembered"
+        except Exception:
+            result = "✗ Failed to save note"
+        self._note_spinner_timer.pause()
+        self._set_notes_footer(result)
+        self.set_timer(2.5, lambda: self._set_notes_footer(NotesPane.FOOTER_DEFAULT))
 
     def _mount_input(self) -> None:
         """Mount a new inline [user] prompt with Input inside the chat scroll."""

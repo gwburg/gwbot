@@ -9,7 +9,6 @@ from textual.css.query import NoMatches
 from textual.widgets import OptionList, Static, TextArea
 from textual.widgets.option_list import Option
 from memory import list_conversations
-from memory.background import spawn_note_background
 from rich.text import Text
 
 
@@ -145,14 +144,20 @@ class NotesPane(Vertical):
 
     BINDINGS = [Binding("escape", "close_notes", "Close", show=False)]
 
+    FOOTER_DEFAULT = "Enter: Save  |  Escape: Close"
+
+    class NoteSubmitted(Message):
+        def __init__(self, text: str) -> None:
+            super().__init__()
+            self.text = text
+
     def compose(self):
         yield Static("Notes", id="notes-header")
         yield NoteInput(id="notes-input", language=None, soft_wrap=True, show_line_numbers=False)
-        yield Static("Enter: Save  |  Escape: Close", id="notes-footer")
+        yield Static(self.FOOTER_DEFAULT, id="notes-footer")
 
     def on_submittable_text_area_submitted(self, event: SubmittableTextArea.Submitted) -> None:
-        spawn_note_background(event.value)
-        self.app.notify("Note saved", timeout=2)
+        self.post_message(self.NoteSubmitted(event.value))
         event.stop()
 
     def action_close_notes(self) -> None:
