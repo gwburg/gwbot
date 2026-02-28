@@ -36,14 +36,20 @@ def read_conversation(conversation_id: str) -> str:
     return _read_conversation(conversation_id)
 
 
-def create_memory(content: str, tags: str) -> str:
+def create_memory(content: str, tags: str, knowledge_tag: str | None = None) -> str:
     tag_list = [t.strip() for t in tags.split(",")]
+    if knowledge_tag:
+        tag_list.append(knowledge_tag)
     meta = _create_memory(content, tag_list)
     return json.dumps(meta, indent=2)
 
 
-def update_memory(memory_id: str, content: str | None = None, tags: str | None = None) -> str:
+def update_memory(memory_id: str, content: str | None = None, tags: str | None = None, knowledge_tag: str | None = None) -> str:
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
+    if knowledge_tag and tag_list is not None:
+        tag_list.append(knowledge_tag)
+    elif knowledge_tag:
+        tag_list = [knowledge_tag]
     try:
         meta = _update_memory(memory_id, content=content, tags=tag_list)
     except FileNotFoundError as e:
@@ -139,11 +145,16 @@ tools = [
                     },
                     "tags": {
                         "type": "string",
+                        "description": "Comma-separated descriptive tags (e.g. 'preference,food'). Use existing tags when possible.",
+                    },
+                    "knowledge_tag": {
+                        "type": "string",
+                        "enum": ["always", "shell", "editor", "memory", "monarch"],
                         "description": (
-                            "Comma-separated tags (e.g. 'preference,food'). Use existing tags when possible. "
-                            "Special tags: 'always' (loaded into system prompt at startup), "
-                            "or a tool-category tag (shell, editor, memory, monarch) to auto-inject "
-                            "the memory into the first tool result from that category each conversation."
+                            "Optional. Auto-injects this memory as domain knowledge. "
+                            "'always' = loaded into system prompt at startup. "
+                            "Tool-category tags (shell, editor, memory, monarch) = injected into "
+                            "the first tool result from that category each conversation."
                         ),
                     },
                 },
@@ -169,7 +180,16 @@ tools = [
                     },
                     "tags": {
                         "type": "string",
-                        "description": "New comma-separated tags to replace existing tags",
+                        "description": "New comma-separated descriptive tags to replace existing tags",
+                    },
+                    "knowledge_tag": {
+                        "type": "string",
+                        "enum": ["always", "shell", "editor", "memory", "monarch"],
+                        "description": (
+                            "Optional. Auto-injects this memory as domain knowledge. "
+                            "'always' = loaded into system prompt at startup. "
+                            "Tool-category tags = injected into first tool result from that category."
+                        ),
                     },
                 },
                 "required": ["memory_id"],
