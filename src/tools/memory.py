@@ -60,15 +60,15 @@ def list_tags() -> str:
     return ", ".join(tags)
 
 
-def create_todo(content: str, tags: str) -> str:
+def create_todo(content: str, tags: str, owner: str = "user") -> str:
     tag_list = [t.strip() for t in tags.split(",")]
-    meta = _create_memory(content, tag_list, type="todo")
+    meta = _create_memory(content, tag_list, type="todo", owner=owner)
     return json.dumps(meta, indent=2)
 
 
-def create_reminder(content: str, tags: str, deadline: str) -> str:
+def create_reminder(content: str, tags: str, deadline: str, owner: str = "user") -> str:
     tag_list = [t.strip() for t in tags.split(",")]
-    meta = _create_memory(content, tag_list, type="reminder", deadline=deadline)
+    meta = _create_memory(content, tag_list, type="reminder", deadline=deadline, owner=owner)
     return json.dumps(meta, indent=2)
 
 
@@ -89,6 +89,7 @@ def list_tasks() -> str:
         entry = {
             "id": t.get("id"),
             "type": t.get("type"),
+            "owner": t.get("owner", "user"),
             "tags": t.get("tags", []),
             "preview": (t.get("content", "")[:200] or ""),
             "created": t.get("created"),
@@ -259,6 +260,11 @@ tools = [
                         "type": "string",
                         "description": "Comma-separated descriptive tags",
                     },
+                    "owner": {
+                        "type": "string",
+                        "enum": ["user", "agent"],
+                        "description": "'user' = remind the user to do this. 'agent' = something the agent should do/remember. Defaults to 'user'.",
+                    },
                 },
                 "required": ["content", "tags"],
             },
@@ -283,6 +289,11 @@ tools = [
                     "deadline": {
                         "type": "string",
                         "description": "Due date in YYYY-MM-DD format (e.g. '2026-03-15')",
+                    },
+                    "owner": {
+                        "type": "string",
+                        "enum": ["user", "agent"],
+                        "description": "'user' = remind the user about this. 'agent' = something the agent should do by the deadline. Defaults to 'user'.",
                     },
                 },
                 "required": ["content", "tags", "deadline"],

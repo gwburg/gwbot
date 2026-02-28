@@ -26,8 +26,10 @@ def build_memory_prompt(category_tags: list[str] | None = None) -> str:
         "- Only save meaningful, long-term information — not ephemeral details.\n\n"
         "### TODOs and reminders\n"
         "- Use `create_todo` for simple tasks and `create_reminder` for deadline-based reminders.\n"
+        "- Set `owner` to `user` (default) for things the user needs to do, or `agent` for your own tasks.\n"
         "- Use `list_tasks` to see all open items, `complete_task` to mark done (deletes them).\n"
-        "- Proactively check and mention overdue reminders when relevant.\n\n"
+        "- For user tasks: proactively remind the user, especially about overdue items.\n"
+        "- For agent tasks: act on them when relevant (e.g. follow a workflow, check something).\n\n"
         "### Knowledge tags\n"
         "Memories can be tagged for automatic injection:\n"
         "- `always` — content is loaded into the system prompt at startup.\n"
@@ -47,16 +49,28 @@ def build_memory_prompt(category_tags: list[str] | None = None) -> str:
     tasks = list_tasks()
     if tasks:
         today = date.today().isoformat()
-        prompt += "\n\n## Open Tasks\n"
-        for t in tasks:
-            content = t.get("content", "")[:200]
-            tid = t.get("id", "")
-            ttype = t.get("type", "todo")
-            deadline = t.get("deadline")
-            if ttype == "reminder" and deadline:
-                overdue = " **OVERDUE**" if deadline < today else ""
-                prompt += f"\n- [{tid}] REMINDER (due {deadline}{overdue}): {content}"
-            else:
-                prompt += f"\n- [{tid}] TODO: {content}"
+        user_tasks = [t for t in tasks if t.get("owner", "user") == "user"]
+        agent_tasks = [t for t in tasks if t.get("owner") == "agent"]
+
+        if user_tasks:
+            prompt += "\n\n## User Tasks (remind the user)\n"
+            for t in user_tasks:
+                prompt += _format_task(t, today)
+
+        if agent_tasks:
+            prompt += "\n\n## Agent Tasks (your responsibilities)\n"
+            for t in agent_tasks:
+                prompt += _format_task(t, today)
 
     return prompt
+
+
+def _format_task(t: dict, today: str) -> str:
+    content = t.get("content", "")[:200]
+    tid = t.get("id", "")
+    ttype = t.get("type", "todo")
+    deadline = t.get("deadline")
+    if ttype == "reminder" and deadline:
+        overdue = " **OVERDUE**" if deadline < today else ""
+        return f"\n- [{tid}] REMINDER (due {deadline}{overdue}): {content}"
+    return f"\n- [{tid}] TODO: {content}"

@@ -70,7 +70,7 @@ def read_conversation(conversation_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _write_memory_file(memory_id: str, tags: list[str], content: str, conversation_id: str | None = None, created: str | None = None, knowledge_tag: str | None = None, type: str = "memory", deadline: str | None = None) -> dict:
+def _write_memory_file(memory_id: str, tags: list[str], content: str, conversation_id: str | None = None, created: str | None = None, knowledge_tag: str | None = None, type: str = "memory", deadline: str | None = None, owner: str | None = None) -> dict:
     """Write a high-level memory .md file with YAML frontmatter."""
     ensure_dirs()
     now = datetime.now(timezone.utc).isoformat()
@@ -84,6 +84,8 @@ def _write_memory_file(memory_id: str, tags: list[str], content: str, conversati
         meta["type"] = type
     if deadline:
         meta["deadline"] = deadline
+    if owner:
+        meta["owner"] = owner
     if knowledge_tag:
         meta["knowledge_tag"] = knowledge_tag
     if conversation_id:
@@ -110,10 +112,10 @@ def _write_memory_file(memory_id: str, tags: list[str], content: str, conversati
     return meta
 
 
-def create_memory(content: str, tags: list[str], conversation_id: str | None = None, knowledge_tag: str | None = None, type: str = "memory", deadline: str | None = None) -> dict:
+def create_memory(content: str, tags: list[str], conversation_id: str | None = None, knowledge_tag: str | None = None, type: str = "memory", deadline: str | None = None, owner: str | None = None) -> dict:
     """Create a new high-level memory and return its metadata."""
     memory_id = uuid4().hex[:12]
-    return _write_memory_file(memory_id, tags, content, conversation_id, knowledge_tag=knowledge_tag, type=type, deadline=deadline)
+    return _write_memory_file(memory_id, tags, content, conversation_id, knowledge_tag=knowledge_tag, type=type, deadline=deadline, owner=owner)
 
 
 def update_memory(memory_id: str, content: str | None = None, tags: list[str] | None = None, knowledge_tag: str | None = None, deadline: str | None = None) -> dict:
@@ -126,7 +128,7 @@ def update_memory(memory_id: str, content: str | None = None, tags: list[str] | 
     new_tags = tags if tags is not None else existing["tags"]
     new_knowledge_tag = knowledge_tag if knowledge_tag is not None else existing.get("knowledge_tag")
     new_deadline = deadline if deadline is not None else existing.get("deadline")
-    return _write_memory_file(memory_id, new_tags, new_content, existing.get("conversation_id"), existing["created"], knowledge_tag=new_knowledge_tag, type=existing.get("type", "memory"), deadline=new_deadline)
+    return _write_memory_file(memory_id, new_tags, new_content, existing.get("conversation_id"), existing["created"], knowledge_tag=new_knowledge_tag, type=existing.get("type", "memory"), deadline=new_deadline, owner=existing.get("owner"))
 
 
 def delete_memory(memory_id: str) -> None:
