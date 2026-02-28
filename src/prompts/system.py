@@ -1,14 +1,19 @@
 """System prompts for the agent."""
 
+from datetime import datetime
+
 from .memory import build_memory_prompt
 
 
 def build_system_prompt(persona: str, tool_categories: list[str], category_tags: list[str] | None = None) -> str:
     """Build a system prompt from a persona key and a list of tool categories."""
     base = SYSTEM_PROMPTS[persona]
+    now = datetime.now()
+    context = f"**Today**: {now.strftime('%A, %Y-%m-%d, %-I:%M %p')}"
     tools_section = "\n".join(f"- {cat}" for cat in tool_categories)
     prompt = (
         f"{base}\n\n"
+        f"{context}\n\n"
         "You have access to the following tool categories:\n"
         f"{tools_section}\n\n"
         "These tools are all equally available to you. No single toolset defines "
