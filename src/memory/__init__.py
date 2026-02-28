@@ -284,14 +284,9 @@ def list_all_memories() -> list[dict]:
 
 def _build_result(mem: dict, score: float | None = None) -> dict:
     content = mem.get("content", "")
-    result = {
-        "id": mem.get("id"),
-        "tags": mem.get("tags", []),
-        "preview": content[:200] + ("..." if len(content) > 200 else ""),
-        "conversation_id": mem.get("conversation_id"),
-        "created": mem.get("created"),
-        "updated": mem.get("updated"),
-    }
+    result = dict(mem)
+    result["preview"] = content[:200] + ("..." if len(content) > 200 else "")
+    result.pop("content", None)
     if score is not None:
         result["score"] = round(score, 3)
     return result
