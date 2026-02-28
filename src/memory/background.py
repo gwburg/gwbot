@@ -32,6 +32,7 @@ def _strip_fences(raw: str) -> str:
     return raw
 
 
+
 def _apply_operations(operations: list[dict], conversation_id: str | None = None) -> list[dict]:
     """Process a list of memory operations (create or update) and return results."""
     results = []
@@ -42,6 +43,7 @@ def _apply_operations(operations: list[dict], conversation_id: str | None = None
                     op["duplicate_of"],
                     content=op["updated_content"],
                     tags=op.get("tags"),
+                    knowledge_tag=op.get("knowledge_tag") or None,
                 )
                 meta["action"] = "updated"
                 results.append(meta)
@@ -49,9 +51,23 @@ def _apply_operations(operations: list[dict], conversation_id: str | None = None
             except FileNotFoundError:
                 pass  # Fall through to create
 
-        kwargs = {"content": op["summary"], "tags": op.get("tags", [])}
-        if conversation_id:
+        op_type = op.get("type", "memory")
+        kwargs = {
+            "content": op["summary"],
+            "tags": op.get("tags", []),
+            "type": op_type,
+        }
+        if op.get("owner"):
+            kwargs["owner"] = op["owner"]
+        if op.get("deadline"):
+            kwargs["deadline"] = op["deadline"]
+        if op.get("recurring"):
+            kwargs["recurring"] = op["recurring"]
+        if op.get("knowledge_tag"):
+            kwargs["knowledge_tag"] = op["knowledge_tag"]
+        if conversation_id and op_type == "memory":
             kwargs["conversation_id"] = conversation_id
+
         meta = create_memory(**kwargs)
         meta["action"] = "created"
         results.append(meta)
@@ -76,69 +92,70 @@ def _spawn(args: list[str], data: dict) -> None:
         stderr=subprocess.DEVNULL,
     )
 
-_NOTE_PROMPT = """\
-You are a memory manager. A user has written a note. Process it into memories.
-
-## Existing memories (for dedup — do NOT create duplicates)
-{existing_memories}
-
-## Known tags
-{tags}
-
-## Note
-{note}
-
-## Instructions
-If the note is short and self-contained (1-3 sentences), save it verbatim as a single memory.
-If it's longer or covers multiple topics, split it into separate memories, each with a concise summary.
-If it overlaps with an existing memory, update that memory instead.
-
-Respond with a JSON array of memory operations (no markdown fences). Each element is an object:
+_SHARED_SCHEMA_RULES = """\
+Each element in the array is an operation object with these fields:
 {{
-  "summary": "concise summary of one distinct piece of information",
-  "tags": ["tag1", "tag2"],
-  "duplicate_of": null or "memory_id_to_update",
-  "updated_content": null or "merged content if updating a duplicate"
+  "type": "memory",         // "memory" (default), "todo", or "reminder"
+  "summary": "...",         // content; verbatim for short notes, concise summary otherwise
+  "tags": ["tag1"],         // descriptive tags; reuse existing ones when possible
+  "owner": null,            // "user" or "agent" — for todo/reminder only
+  "deadline": null,         // YYYY-MM-DD — for reminder only
+  "recurring": false,       // true = hides for today and reappears next session — for reminder only
+  "knowledge_tag": null,    // "always"|"shell"|"editor"|"memory"|"monarch" — for memory only; auto-injects content
+  "duplicate_of": null,     // ID of existing memory to update instead of creating
+  "updated_content": null   // merged content when updating a duplicate
 }}
 
-Return an empty array `[]` if the note contains nothing worth saving.
+Type guide:
+- "memory": a fact, preference, decision, or instruction worth remembering long-term.
+- "todo": a task with no deadline. Set owner="user" (remind the user) or owner="agent" (agent's own task).
+- "reminder": a time-sensitive item. Requires deadline (YYYY-MM-DD). Use recurring=true for repeating tasks.
 
 Rules:
-- Each memory should capture ONE distinct topic or fact.
-- If information overlaps with an existing memory, set duplicate_of to its ID and provide updated_content that merges the old and new info.
-- Use existing tags when possible; only invent new tags if truly needed.
-- Keep summaries concise — one to three sentences each."""
+- Each operation captures ONE distinct topic or fact.
+- If content overlaps with an existing memory, set duplicate_of + updated_content to merge; don't create a duplicate.
+- Use existing tags when possible; only invent new ones if truly needed.
+- Keep summaries concise — one to three sentences each.
+- Omit null/false fields (they are optional)."""
 
-_SUMMARIZE_PROMPT = """\
-You are a memory manager. Given a conversation, decide whether it contains anything worth remembering long-term.
+def _build_note_prompt(existing_memories: str, tags: str, note: str) -> str:
+    return (
+        "You are a memory manager. A user has written a note. Process it into memories.\n\n"
+        "## Existing memories (for dedup — do NOT create duplicates)\n"
+        f"{existing_memories}\n\n"
+        "## Known tags\n"
+        f"{tags}\n\n"
+        "## Note\n"
+        f"{note}\n\n"
+        "## Instructions\n"
+        "If the note is short and self-contained (1-3 sentences), save it verbatim as a single memory.\n"
+        "If it's longer or covers multiple topics, split it into separate memories.\n"
+        "If it overlaps with an existing memory, update that memory instead.\n"
+        "If the note contains a task or reminder, use the appropriate type.\n\n"
+        "Respond with a JSON array of memory operations (no markdown fences).\n"
+        "Return an empty array `[]` if the note contains nothing worth saving.\n\n"
+        + _SHARED_SCHEMA_RULES
+    )
 
-## Existing memories (for dedup — do NOT create duplicates)
-{existing_memories}
 
-## Known tags
-{tags}
-
-## Conversation
-{conversation}
-
-## Instructions
-Respond with a JSON array of memory operations (no markdown fences). Each element is an object:
-{{
-  "summary": "concise summary of one distinct piece of information",
-  "tags": ["tag1", "tag2"],
-  "duplicate_of": null or "memory_id_to_update",
-  "updated_content": null or "merged content if updating a duplicate"
-}}
-
-Return an empty array `[]` if the conversation contains nothing worth saving.
-
-Rules:
-- Only save meaningful, long-term information (preferences, decisions, facts, instructions).
-- Trivial conversations (greetings, one-off questions, simple tool usage) should NOT be saved.
-- Each memory should capture ONE distinct topic or fact. If the conversation covers multiple unrelated topics, create separate memories for each.
-- If information overlaps with an existing memory, set duplicate_of to its ID and provide updated_content that merges the old and new info.
-- Use existing tags when possible; only invent new tags if truly needed.
-- Keep summaries concise — one to three sentences each."""
+def _build_summarize_prompt(existing_memories: str, tags: str, conversation: str) -> str:
+    return (
+        "You are a memory manager. Given a conversation, decide whether it contains anything worth remembering long-term.\n\n"
+        "## Existing memories (for dedup — do NOT create duplicates)\n"
+        f"{existing_memories}\n\n"
+        "## Known tags\n"
+        f"{tags}\n\n"
+        "## Conversation\n"
+        f"{conversation}\n\n"
+        "## Instructions\n"
+        "Respond with a JSON array of memory operations (no markdown fences).\n"
+        "Return an empty array `[]` if the conversation contains nothing worth saving.\n\n"
+        "Only save meaningful, long-term information: preferences, decisions, facts, instructions, tasks, or reminders.\n"
+        "Trivial conversations (greetings, one-off questions, simple tool usage) should NOT be saved.\n"
+        "If the conversation covers multiple unrelated topics, create separate operations for each.\n"
+        "If the user or agent agreed to do something by a deadline, create a reminder. If it's an open-ended task, create a todo.\n\n"
+        + _SHARED_SCHEMA_RULES
+    )
 
 
 def _format_existing_memories(memories: list[dict]) -> str:
@@ -185,7 +202,7 @@ async def process_conversation(client, conversation_id: str, messages: list[dict
     tags = get_tags()
 
     # 4. Build prompt and call LLM
-    prompt = _SUMMARIZE_PROMPT.format(
+    prompt = _build_summarize_prompt(
         existing_memories=_format_existing_memories(existing),
         tags=", ".join(tags) if tags else "(none)",
         conversation=_format_conversation(messages),
@@ -214,7 +231,7 @@ async def process_note(client, note_text: str, model: str | None = None) -> list
     existing = list_all_memories()
     tags = get_tags()
 
-    prompt = _NOTE_PROMPT.format(
+    prompt = _build_note_prompt(
         existing_memories=_format_existing_memories(existing),
         tags=", ".join(tags) if tags else "(none)",
         note=note_text,
