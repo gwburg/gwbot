@@ -153,6 +153,7 @@ class NotesPane(Vertical):
 
     def action_close_notes(self) -> None:
         self.display = False
+        self.app.refresh_bindings()
         try:
             self.app.query_one("#user-input").focus()
         except Exception:

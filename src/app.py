@@ -359,16 +359,27 @@ class AgentApp(App):
     def _reset_ctrl_c(self) -> None:
         self._ctrl_c_pressed = False
 
+    def check_action(self, action: str, parameters: tuple) -> bool | None:
+        if action in ("focus_chat", "focus_notes"):
+            try:
+                pane = self.query_one("#notes-pane", NotesPane)
+                return True if pane.display else None
+            except Exception:
+                return None
+        return True
+
     def action_open_note(self) -> None:
         pane = self.query_one("#notes-pane", NotesPane)
         if pane.display:
             pane.display = False
+            self.refresh_bindings()
             try:
                 self.query_one("#user-input").focus()
             except Exception:
                 pass
         else:
             pane.display = True
+            self.refresh_bindings()
             pane.query_one("#notes-input").focus()
 
     def action_focus_chat(self) -> None:
