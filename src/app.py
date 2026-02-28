@@ -57,8 +57,8 @@ class AgentApp(App):
         Binding("ctrl+c", "ctrl_c", "Quit", show=False, priority=True),
         Binding("alt+m", "switch_model", "Switch Model"),
         Binding("alt+n", "open_note", "Note"),
-        Binding("alt+left", "focus_chat", "Chat", priority=True),
-        Binding("alt+right", "focus_notes", "Notes", priority=True),
+        Binding("alt+h", "focus_chat", "Chat", priority=True),
+        Binding("alt+l", "focus_notes", "Notes", priority=True),
     ]
 
     def __init__(self, model: str, system_prompt: str, max_iterations: int = 50, initial_note: bool = False, initial_resume: bool = False):
