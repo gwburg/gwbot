@@ -2,9 +2,9 @@ import json
 import os
 from datetime import date
 
-CATEGORY = "Personal finance — query accounts, transactions, budgets, and cashflow via Monarch Money"
-
 from monarchmoney import MonarchMoney
+
+CATEGORY = "Personal finance — query accounts, transactions, budgets, and cashflow via Monarch Money"
 
 _mm: MonarchMoney | None = None
 
