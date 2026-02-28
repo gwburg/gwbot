@@ -49,14 +49,20 @@ Screen {
 
 #user-input {
     width: 1fr;
-    height: 1;
+    height: auto;
+    max-height: 8;
     border: none;
     background: transparent;
     padding: 0;
+    scrollbar-size: 0 0;
 }
 
 #user-input:focus {
     border: none;
+}
+
+#user-input .text-area--cursor-line {
+    background: transparent;
 }
 
 #status-bar {

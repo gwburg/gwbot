@@ -5,7 +5,8 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
 from textual.message import Message
-from textual.widgets import Footer, Header, Input, Static
+from textual import events
+from textual.widgets import Footer, Header, Static, TextArea
 from tools import CATEGORY_TAGS, categories as tool_categories, tools
 
 import models
@@ -39,6 +40,23 @@ C_WARN = "#f38ba8"
 C_DIM = "#6c7086"
 
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+
+class SubmittableTextArea(TextArea):
+    """TextArea that submits on Enter and wraps long lines."""
+
+    class Submitted(Message):
+        def __init__(self, value: str) -> None:
+            super().__init__()
+            self.value = value
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "enter":
+            event.prevent_default()
+            text = self.text.strip()
+            if text:
+                self.post_message(self.Submitted(text))
+                self.load_text("")
 
 
 class AgentMessage(Message):
@@ -136,15 +154,15 @@ class AgentApp(App):
         scroll = self.query_one("#chat-scroll", VerticalScroll)
         row = Horizontal(id="input-row")
         label = Static(f"[{C_USER}]\\[user][/] ", id="input-label")
-        inp = Input(id="user-input")
+        inp = SubmittableTextArea("", id="user-input", language=None, soft_wrap=True, show_line_numbers=False)
         scroll.mount(row)
         row.mount(label)
         row.mount(inp)
         row.scroll_visible(animate=False)
         inp.focus()
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        text = event.value.strip()
+    def on_submittable_text_area_submitted(self, event: SubmittableTextArea.Submitted) -> None:
+        text = event.value
         if not text:
             return
         row = self.query_one("#input-row", Horizontal)
