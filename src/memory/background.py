@@ -21,6 +21,39 @@ from memory import (
 
 DEFAULT_MODEL = models.MINIMAX
 
+_NOTE_PROMPT = """\
+You are a memory manager. A user has written a note. Process it into memories.
+
+## Existing memories (for dedup — do NOT create duplicates)
+{existing_memories}
+
+## Known tags
+{tags}
+
+## Note
+{note}
+
+## Instructions
+If the note is short and self-contained (1-3 sentences), save it verbatim as a single memory.
+If it's longer or covers multiple topics, split it into separate memories, each with a concise summary.
+If it overlaps with an existing memory, update that memory instead.
+
+Respond with a JSON array of memory operations (no markdown fences). Each element is an object:
+{{
+  "summary": "concise summary of one distinct piece of information",
+  "tags": ["tag1", "tag2"],
+  "duplicate_of": null or "memory_id_to_update",
+  "updated_content": null or "merged content if updating a duplicate"
+}}
+
+Return an empty array `[]` if the note contains nothing worth saving.
+
+Rules:
+- Each memory should capture ONE distinct topic or fact.
+- If information overlaps with an existing memory, set duplicate_of to its ID and provide updated_content that merges the old and new info.
+- Use existing tags when possible; only invent new tags if truly needed.
+- Keep summaries concise — one to three sentences each."""
+
 _SUMMARIZE_PROMPT = """\
 You are a memory manager. Given a conversation, decide whether it contains anything worth remembering long-term.
 
@@ -150,6 +183,83 @@ async def process_conversation(client, conversation_id: str, messages: list[dict
     return results
 
 
+async def process_note(client, note_text: str, model: str | None = None) -> list[dict]:
+    """Process a user note into memories via LLM.
+
+    Returns a list of memory metadata dicts (empty if nothing saved).
+    """
+    existing = list_all_memories()
+    tags = get_tags()
+
+    prompt = _NOTE_PROMPT.format(
+        existing_memories=_format_existing_memories(existing),
+        tags=", ".join(tags) if tags else "(none)",
+        note=note_text,
+    )
+
+    response = await client.chat.completions.create(
+        model=model or DEFAULT_MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,
+    )
+
+    raw = response.choices[0].message.content.strip()
+
+    # Strip markdown fences if present
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+        if raw.endswith("```"):
+            raw = raw[:-3]
+        raw = raw.strip()
+
+    operations = json.loads(raw)
+
+    if not isinstance(operations, list) or not operations:
+        return []
+
+    results = []
+    for op in operations:
+        if op.get("duplicate_of") and op.get("updated_content"):
+            try:
+                meta = update_memory(
+                    op["duplicate_of"],
+                    content=op["updated_content"],
+                    tags=op.get("tags"),
+                )
+                meta["action"] = "updated"
+                results.append(meta)
+                continue
+            except FileNotFoundError:
+                pass  # Fall through to create
+
+        meta = create_memory(
+            content=op["summary"],
+            tags=op.get("tags", []),
+        )
+        meta["action"] = "created"
+        results.append(meta)
+
+    return results
+
+
+def spawn_note_background(note_text: str) -> None:
+    """Fire-and-forget: spawn a detached subprocess to process a note into memories."""
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", prefix="agent_note_", delete=False
+    )
+    json.dump({"note": note_text}, tmp)
+    tmp.close()
+
+    subprocess.Popen(
+        [sys.executable, "-m", "memory.background", "--note", tmp.name],
+        cwd=os.path.join(os.path.dirname(__file__), ".."),
+        start_new_session=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
 def spawn_background(conversation_id: str, messages: list[dict]) -> None:
     """Fire-and-forget: save conversation log and spawn a detached subprocess.
 
@@ -179,15 +289,20 @@ def spawn_background(conversation_id: str, messages: list[dict]) -> None:
 
 
 if __name__ == "__main__":
+    import argparse as _argparse
     import asyncio
     from dotenv import load_dotenv
     from openai import AsyncOpenAI
 
     load_dotenv()
 
-    conv_file = sys.argv[1]
+    _parser = _argparse.ArgumentParser()
+    _parser.add_argument("file", help="Path to temp JSON file")
+    _parser.add_argument("--note", action="store_true", help="Process as a note instead of conversation")
+    _args = _parser.parse_args()
+
     try:
-        with open(conv_file) as f:
+        with open(_args.file) as f:
             data = json.load(f)
 
         client = AsyncOpenAI(
@@ -195,14 +310,16 @@ if __name__ == "__main__":
             api_key=os.getenv("OPENROUTER_API_KEY"),
         )
 
-        asyncio.run(
-            process_conversation(
-                client, data["conversation_id"], data["messages"]
+        if _args.note:
+            asyncio.run(process_note(client, data["note"]))
+        else:
+            asyncio.run(
+                process_conversation(
+                    client, data["conversation_id"], data["messages"]
+                )
             )
-        )
     finally:
-        # Always clean up the temp file
         try:
-            os.unlink(conv_file)
+            os.unlink(_args.file)
         except OSError:
             pass

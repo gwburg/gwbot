@@ -76,6 +76,35 @@ ModelSelector {
     align: center middle;
 }
 
+NoteScreen {
+    layout: vertical;
+}
+
+#note-header {
+    height: 1;
+    padding: 0 1;
+    background: $primary;
+    color: $text;
+    text-style: bold;
+}
+
+#note-input {
+    height: 1fr;
+    border: none;
+    padding: 1 2;
+}
+
+#note-input:focus {
+    border: none;
+}
+
+#note-footer {
+    height: 1;
+    padding: 0 1;
+    background: $surface;
+    color: $text-muted;
+}
+
 ModelSelector OptionList {
     width: 60;
     height: auto;

@@ -1,7 +1,8 @@
 import models
+from textual.binding import Binding
 from textual.reactive import reactive
-from textual.screen import ModalScreen
-from textual.widgets import OptionList, Static
+from textual.screen import ModalScreen, Screen
+from textual.widgets import Header, OptionList, Static, TextArea
 from textual.widgets.option_list import Option
 from rich.text import Text
 
@@ -47,4 +48,31 @@ class ModelSelector(ModalScreen[str | None]):
         self.dismiss(event.option.id)
 
     def action_dismiss_modal(self):
+        self.dismiss(None)
+
+
+class NoteScreen(Screen):
+    """Full-screen note editor for quickly saving memories."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    def compose(self):
+        yield Header()
+        yield Static("[bold] New Note [/bold]", id="note-header")
+        yield TextArea(id="note-input", language=None, soft_wrap=True, show_line_numbers=False)
+        yield Static("Enter: Save  |  Escape: Cancel", id="note-footer")
+
+    def on_mount(self):
+        self.query_one("#note-input").focus()
+
+    def on_key(self, event):
+        if event.key == "enter":
+            text = self.query_one("#note-input").text.strip()
+            if text:
+                event.prevent_default()
+                self.dismiss(text)
+
+    def action_cancel(self):
         self.dismiss(None)

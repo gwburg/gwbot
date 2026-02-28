@@ -11,9 +11,9 @@ from tools import CATEGORY_TAGS, categories as tool_categories, tools
 
 import models
 from memory import new_conversation_id
-from memory.background import spawn_background
+from memory.background import spawn_background, spawn_note_background
 from prompts import SYSTEM_PROMPTS, build_system_prompt
-from widgets import ModelSelector, StatusBar
+from widgets import ModelSelector, NoteScreen, StatusBar
 from agent import (
     AgentEvent,
     RunEndEvent,
@@ -74,9 +74,10 @@ class AgentApp(App):
     BINDINGS = [
         Binding("ctrl+q", "quit", "Quit"),
         Binding("ctrl+n", "switch_model", "Switch Model"),
+        Binding("ctrl+o", "open_note", "Note"),
     ]
 
-    def __init__(self, model: str, system_prompt: str, max_iterations: int = 50, log_path: str | None = None, initial_task: str | None = None):
+    def __init__(self, model: str, system_prompt: str, max_iterations: int = 50, log_path: str | None = None, initial_task: str | None = None, initial_note: bool = False):
         super().__init__()
         self.model_alias = model
         self.model_id = MODEL_MAP[model]
@@ -84,6 +85,7 @@ class AgentApp(App):
         self.max_iterations = max_iterations
         self.log_path = log_path
         self.initial_task = initial_task
+        self.initial_note = initial_note
 
         self.client = create_client()
         self.conversation_id = new_conversation_id()
@@ -109,7 +111,9 @@ class AgentApp(App):
         status.model_name = self.model_id
         self._stream_timer = self.set_interval(0.05, self._flush_stream, pause=True)
         self._spinner_timer = self.set_interval(0.08, self._tick_spinner, pause=True)
-        if self.initial_task:
+        if self.initial_note:
+            self.action_open_note()
+        elif self.initial_task:
             self._submit_message(self.initial_task)
         else:
             self._mount_input()
@@ -285,6 +289,13 @@ class AgentApp(App):
             pass  # Memory is best-effort — never block exit
         self.exit()
 
+    def action_open_note(self) -> None:
+        def on_dismiss(text: str | None) -> None:
+            if text:
+                spawn_note_background(text)
+                self.notify("Note saved", timeout=2)
+        self.push_screen(NoteScreen(), callback=on_dismiss)
+
     def action_switch_model(self) -> None:
         if self._is_running:
             return
@@ -308,6 +319,7 @@ if __name__ == "__main__":
     parser.add_argument("--persona", default="default", choices=SYSTEM_PROMPTS, help=f"System prompt persona. Choices: {', '.join(SYSTEM_PROMPTS)}")
     parser.add_argument("--max-iterations", type=int, default=50)
     parser.add_argument("--log", metavar="PATH", help="Write a JSONL log to this file")
+    parser.add_argument("--note", action="store_true", help="Open note editor on startup")
     args = parser.parse_args()
 
     system_prompt = args.system_prompt or build_system_prompt(args.persona, tool_categories, CATEGORY_TAGS)
@@ -318,5 +330,6 @@ if __name__ == "__main__":
         max_iterations=args.max_iterations,
         log_path=args.log,
         initial_task=args.task,
+        initial_note=args.note,
     )
     app.run()
