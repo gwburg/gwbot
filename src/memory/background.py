@@ -1,6 +1,14 @@
-"""Background agent that summarizes conversations into high-level memories."""
+"""Background agent that summarizes conversations into high-level memories.
+
+Can be run as a standalone script for detached processing:
+    python -m memory.background <conversation_file.json>
+"""
 
 import json
+import os
+import subprocess
+import sys
+import tempfile
 
 import models
 from memory import (
@@ -140,3 +148,61 @@ async def process_conversation(client, conversation_id: str, messages: list[dict
         results.append(meta)
 
     return results
+
+
+def spawn_background(conversation_id: str, messages: list[dict]) -> None:
+    """Fire-and-forget: save conversation log and spawn a detached subprocess.
+
+    The raw conversation log is saved synchronously (fast, no network).
+    The LLM summarization runs in a detached subprocess that survives
+    TUI exit and terminal closure.
+    """
+    # Save the raw conversation log immediately (no network, fast)
+    save_conversation(conversation_id, messages)
+
+    # Write conversation data to a temp file (subprocess will clean it up)
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", prefix="agent_conv_", delete=False
+    )
+    json.dump({"conversation_id": conversation_id, "messages": messages}, tmp)
+    tmp.close()
+
+    # Launch detached subprocess that runs this module's __main__ block
+    subprocess.Popen(
+        [sys.executable, "-m", "memory.background", tmp.name],
+        cwd=os.path.join(os.path.dirname(__file__), ".."),
+        start_new_session=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+if __name__ == "__main__":
+    import asyncio
+    from dotenv import load_dotenv
+    from openai import AsyncOpenAI
+
+    load_dotenv()
+
+    conv_file = sys.argv[1]
+    try:
+        with open(conv_file) as f:
+            data = json.load(f)
+
+        client = AsyncOpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        )
+
+        asyncio.run(
+            process_conversation(
+                client, data["conversation_id"], data["messages"]
+            )
+        )
+    finally:
+        # Always clean up the temp file
+        try:
+            os.unlink(conv_file)
+        except OSError:
+            pass

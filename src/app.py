@@ -10,7 +10,7 @@ from tools import CATEGORY_TAGS, categories as tool_categories, tools
 
 import models
 from memory import new_conversation_id
-from memory.background import process_conversation
+from memory.background import spawn_background
 from prompts import SYSTEM_PROMPTS, build_system_prompt
 from widgets import ModelSelector, StatusBar
 from agent import (
@@ -260,9 +260,9 @@ class AgentApp(App):
             self._streaming_widget.scroll_visible(animate=False)
 
     async def action_quit(self) -> None:
-        """Save memory on exit, then quit."""
+        """Spawn background memory process, then quit immediately."""
         try:
-            await process_conversation(self.client, self.conversation_id, self.messages)
+            spawn_background(self.conversation_id, self.messages)
         except Exception:
             pass  # Memory is best-effort — never block exit
         self.exit()
