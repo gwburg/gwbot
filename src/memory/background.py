@@ -110,7 +110,7 @@ Each element in the array is an operation object:
 
 Type guide:
 - "memory": a fact, preference, decision, or instruction worth remembering long-term.
-- "todo": a task with no hard deadline. owner="user" (user's task) or owner="agent" (agent's task).
+- "todo": a list of tasks (markdown checkboxes). Items are completed one by one; list is deleted when empty. owner="user" or "agent".
 - "reminder": a time-sensitive item. Requires deadline. Use recurring=true for repeating tasks.
 
 Dedup rules:
@@ -131,11 +131,13 @@ def _build_note_prompt(existing_memories: str, tags: str, note: str) -> str:
         "## Instructions\n"
         "The user deliberately wrote this, so everything in it is worth saving.\n"
         "Infer the appropriate type from structure and language:\n"
-        "- A list of action items, tasks, or ideas → one `todo` per item (owner=\"user\").\n"
+        "- A list of action items, tasks, or ideas → a single `todo` with all items as markdown checkboxes.\n"
+        "  Format: `- [ ] item one\\n- [ ] item two\\n- [ ] item three`.\n"
+        "  Optionally prepend a short title line before the checklist.\n"
+        "  Do NOT create one todo per item — the whole list is one todo memory.\n"
         "- Something with a deadline or 'by [date]' phrasing → `reminder`.\n"
         "- A fact, preference, decision, or instruction → `memory`.\n"
         "- Mixed notes: split into separate operations by topic and intent.\n\n"
-        "If the note is a list, emit one operation per item — do NOT collapse the list into a single memory.\n"
         "Return `[]` only if the note is empty or completely nonsensical.\n\n"
         "Respond with a JSON array of memory operations (no markdown fences).\n\n"
         + _SCHEMA_FIELDS

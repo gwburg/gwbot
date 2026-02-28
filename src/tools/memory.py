@@ -86,11 +86,32 @@ def create_reminder(content: str, tags: str, deadline: str, owner: str = "user",
     return json.dumps(meta, indent=2)
 
 
-def complete_task(memory_id: str) -> str:
+def complete_task(memory_id: str, item: str | None = None) -> str:
     try:
         existing = _parse_memory_file(memory_id)
         if existing is None:
             return f"Memory '{memory_id}' not found"
+
+        # Completing a specific item within a todo list
+        if item is not None:
+            content = existing.get("content", "")
+            lines = content.splitlines()
+            item_lower = item.lower()
+            matched = next(
+                (i for i, l in enumerate(lines)
+                 if l.strip().startswith("- [ ]") and item_lower in l.lower()),
+                None,
+            )
+            if matched is None:
+                return f"Item '{item}' not found in todo list '{memory_id}'."
+            lines.pop(matched)
+            remaining = [l for l in lines if l.strip().startswith("- [ ]")]
+            if not remaining:
+                _delete_memory(memory_id)
+                return f"Last item completed — todo list '{memory_id}' removed."
+            _update_memory(memory_id, content="\n".join(lines).strip())
+            return f"Item completed. {len(remaining)} item(s) remaining."
+
         # Recurring reminders are marked done for today instead of deleted.
         if existing.get("recurring"):
             _complete_recurring(memory_id)
@@ -287,13 +308,13 @@ tools = [
         "type": "function",
         "function": {
             "name": "create_todo",
-            "description": "Create a TODO item. Deleted when completed via complete_task.",
+            "description": "Create a TODO list. Use markdown checkbox format for multiple items: '- [ ] item'. Completed items are removed one by one via complete_task; the list is deleted when all items are done.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "content": {
                         "type": "string",
-                        "description": "What needs to be done",
+                        "description": "The todo list content. For multiple items use markdown checkboxes, e.g. '- [ ] Buy milk\\n- [ ] Call dentist'. For a single item, plain text is fine.",
                     },
                     "tags": {
                         "type": "string",
@@ -347,13 +368,17 @@ tools = [
         "type": "function",
         "function": {
             "name": "complete_task",
-            "description": "Mark a TODO or reminder as done. Non-recurring tasks are deleted permanently. Recurring reminders are marked done for today and will reappear in future sessions.",
+            "description": "Mark a TODO or reminder as done. For todo lists, pass 'item' to complete one item (list is deleted when all items are done). Without 'item', completes the entire task. Recurring reminders are hidden for today and reappear in future sessions; all others are deleted permanently.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "memory_id": {
                         "type": "string",
                         "description": "The ID of the todo or reminder to complete",
+                    },
+                    "item": {
+                        "type": "string",
+                        "description": "For todo lists: text of the specific item to mark done (case-insensitive substring match). Omit to complete the entire task.",
                     },
                 },
                 "required": ["memory_id"],
