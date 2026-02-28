@@ -179,17 +179,6 @@ class AgentApp(App):
         finally:
             self._is_running = False
             self._mount_input()
-            self.run_worker(self._save_memory(), exclusive=False)
-
-    async def _save_memory(self) -> None:
-        """Save conversation log and run background summarization (best-effort)."""
-        try:
-            result = await process_conversation(self.client, self.conversation_id, self.messages)
-            if result:
-                action = result.get("action", "saved")
-                self.notify(f"Memory {action}", timeout=3)
-        except Exception:
-            pass  # Memory is best-effort — never disrupt the chat
 
     def _render_tool(self, connector: str, name: str, args: dict) -> str:
         return f"[{C_DIM}]{connector}[/] [{C_TOOL}]\\[tool][/] [{C_DIM}]{name}({_fmt_args(args)})[/]"
@@ -269,6 +258,14 @@ class AgentApp(App):
             full_text = "".join(self._streaming_parts)
             self._streaming_widget.update(Markdown(full_text))
             self._streaming_widget.scroll_visible(animate=False)
+
+    async def action_quit(self) -> None:
+        """Save memory on exit, then quit."""
+        try:
+            await process_conversation(self.client, self.conversation_id, self.messages)
+        except Exception:
+            pass  # Memory is best-effort — never block exit
+        self.exit()
 
     def action_switch_model(self) -> None:
         if self._is_running:
