@@ -148,7 +148,7 @@ class NotesPane(Vertical):
     def compose(self):
         yield Static("[ notes ]", id="notes-header")
         yield NoteInput(id="notes-input", language=None, soft_wrap=True, show_line_numbers=False)
-        yield Static("Enter: Save  |  Shift+Enter: Newline  |  Escape: Close", id="notes-footer")
+        yield Static("Enter: Save  |  Escape: Close", id="notes-footer")
 
     def on_submittable_text_area_submitted(self, event: SubmittableTextArea.Submitted) -> None:
         spawn_note_background(event.value)
