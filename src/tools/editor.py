@@ -1,5 +1,6 @@
 from pathlib import Path
 
+TAG = "editor"
 CATEGORY = "File editing — read, create, and edit text files"
 
 # Maps file path -> stack of previous contents (for undo)

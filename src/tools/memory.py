@@ -11,6 +11,7 @@ from memory import (
     update_memory as _update_memory,
 )
 
+TAG = "memory"
 CATEGORY = "Memory — search, read, and create persistent memories across conversations"
 
 

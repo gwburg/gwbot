@@ -6,7 +6,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
 from textual.message import Message
 from textual.widgets import Footer, Header, Input, Static
-from tools import categories as tool_categories, tools
+from tools import CATEGORY_TAGS, categories as tool_categories, tools
 
 import models
 from memory import new_conversation_id
@@ -292,7 +292,7 @@ if __name__ == "__main__":
     parser.add_argument("--log", metavar="PATH", help="Write a JSONL log to this file")
     args = parser.parse_args()
 
-    system_prompt = args.system_prompt or build_system_prompt(args.persona, tool_categories)
+    system_prompt = args.system_prompt or build_system_prompt(args.persona, tool_categories, CATEGORY_TAGS)
 
     app = AgentApp(
         model=args.model,

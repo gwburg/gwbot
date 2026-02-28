@@ -1,6 +1,7 @@
 import re
 import subprocess
 
+TAG = "shell"
 CATEGORY = "Shell — run any shell command"
 
 # Each entry is (regex_pattern, human_readable_reason).

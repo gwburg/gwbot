@@ -192,6 +192,11 @@ def get_tags() -> list[str]:
     return data if isinstance(data, list) else []
 
 
+def get_knowledge(tag: str) -> list[dict]:
+    """Return all memories tagged with the given tag (for knowledge injection)."""
+    return [m for m in list_all_memories() if tag in m.get("tags", [])]
+
+
 def _add_tags(new_tags: list[str]) -> None:
     """Merge new tags into tags.yaml."""
     existing = set(get_tags())

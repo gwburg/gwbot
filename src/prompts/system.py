@@ -3,7 +3,7 @@
 from .memory import build_memory_prompt
 
 
-def build_system_prompt(persona: str, tool_categories: list[str]) -> str:
+def build_system_prompt(persona: str, tool_categories: list[str], category_tags: list[str] | None = None) -> str:
     """Build a system prompt from a persona key and a list of tool categories."""
     base = SYSTEM_PROMPTS[persona]
     tools_section = "\n".join(f"- {cat}" for cat in tool_categories)
@@ -15,7 +15,7 @@ def build_system_prompt(persona: str, tool_categories: list[str]) -> str:
         "your role — you are a general-purpose assistant that happens to have "
         "these capabilities."
     )
-    prompt += build_memory_prompt()
+    prompt += build_memory_prompt(category_tags=category_tags)
     return prompt
 
 

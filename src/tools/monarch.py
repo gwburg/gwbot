@@ -4,6 +4,7 @@ from datetime import date
 
 from monarchmoney import MonarchMoney
 
+TAG = "monarch"
 CATEGORY = "Personal finance — query accounts, transactions, budgets, and cashflow via Monarch Money"
 
 _mm: MonarchMoney | None = None
