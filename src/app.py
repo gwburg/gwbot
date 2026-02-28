@@ -363,7 +363,7 @@ class AgentApp(App):
         if action in ("focus_chat", "focus_notes"):
             try:
                 pane = self.query_one("#notes-pane", NotesPane)
-                return True if pane.display else None
+                return True if pane.display else False
             except Exception:
                 return None
         return True
