@@ -92,35 +92,36 @@ def _spawn(args: list[str], data: dict) -> None:
         stderr=subprocess.DEVNULL,
     )
 
-_SHARED_SCHEMA_RULES = """\
-Each element in the array is an operation object with these fields:
-{{
+# Shared: operation schema and type definitions (used by both prompts).
+# Update this when new memory fields or types are added.
+_SCHEMA_FIELDS = """\
+Each element in the array is an operation object:
+{
   "type": "memory",         // "memory" (default), "todo", or "reminder"
-  "summary": "...",         // content; verbatim for short notes, concise summary otherwise
+  "summary": "...",         // the content to save
   "tags": ["tag1"],         // descriptive tags; reuse existing ones when possible
   "owner": null,            // "user" or "agent" — for todo/reminder only
   "deadline": null,         // YYYY-MM-DD — for reminder only
-  "recurring": false,       // true = hides for today and reappears next session — for reminder only
+  "recurring": false,       // true = hides for today, reappears next session — for reminder only
   "knowledge_tag": null,    // "always"|"shell"|"editor"|"memory"|"monarch" — for memory only; auto-injects content
   "duplicate_of": null,     // ID of existing memory to update instead of creating
   "updated_content": null   // merged content when updating a duplicate
-}}
+}
 
 Type guide:
 - "memory": a fact, preference, decision, or instruction worth remembering long-term.
-- "todo": a task with no deadline. Set owner="user" (remind the user) or owner="agent" (agent's own task).
-- "reminder": a time-sensitive item. Requires deadline (YYYY-MM-DD). Use recurring=true for repeating tasks.
+- "todo": a task with no hard deadline. owner="user" (user's task) or owner="agent" (agent's task).
+- "reminder": a time-sensitive item. Requires deadline. Use recurring=true for repeating tasks.
 
-Rules:
-- Each operation captures ONE distinct topic or fact.
+Dedup rules:
 - If content overlaps with an existing memory, set duplicate_of + updated_content to merge; don't create a duplicate.
 - Use existing tags when possible; only invent new ones if truly needed.
-- Keep summaries concise — one to three sentences each.
 - Omit null/false fields (they are optional)."""
+
 
 def _build_note_prompt(existing_memories: str, tags: str, note: str) -> str:
     return (
-        "You are a memory manager. A user has written a note. Process it into memories.\n\n"
+        "You are a memory manager. The user has written a note — save its contents.\n\n"
         "## Existing memories (for dedup — do NOT create duplicates)\n"
         f"{existing_memories}\n\n"
         "## Known tags\n"
@@ -128,13 +129,16 @@ def _build_note_prompt(existing_memories: str, tags: str, note: str) -> str:
         "## Note\n"
         f"{note}\n\n"
         "## Instructions\n"
-        "If the note is short and self-contained (1-3 sentences), save it verbatim as a single memory.\n"
-        "If it's longer or covers multiple topics, split it into separate memories.\n"
-        "If it overlaps with an existing memory, update that memory instead.\n"
-        "If the note contains a task or reminder, use the appropriate type.\n\n"
-        "Respond with a JSON array of memory operations (no markdown fences).\n"
-        "Return an empty array `[]` if the note contains nothing worth saving.\n\n"
-        + _SHARED_SCHEMA_RULES
+        "The user deliberately wrote this, so everything in it is worth saving.\n"
+        "Infer the appropriate type from structure and language:\n"
+        "- A list of action items, tasks, or ideas → one `todo` per item (owner=\"user\").\n"
+        "- Something with a deadline or 'by [date]' phrasing → `reminder`.\n"
+        "- A fact, preference, decision, or instruction → `memory`.\n"
+        "- Mixed notes: split into separate operations by topic and intent.\n\n"
+        "If the note is a list, emit one operation per item — do NOT collapse the list into a single memory.\n"
+        "Return `[]` only if the note is empty or completely nonsensical.\n\n"
+        "Respond with a JSON array of memory operations (no markdown fences).\n\n"
+        + _SCHEMA_FIELDS
     )
 
 
@@ -148,13 +152,14 @@ def _build_summarize_prompt(existing_memories: str, tags: str, conversation: str
         "## Conversation\n"
         f"{conversation}\n\n"
         "## Instructions\n"
-        "Respond with a JSON array of memory operations (no markdown fences).\n"
-        "Return an empty array `[]` if the conversation contains nothing worth saving.\n\n"
         "Only save meaningful, long-term information: preferences, decisions, facts, instructions, tasks, or reminders.\n"
-        "Trivial conversations (greetings, one-off questions, simple tool usage) should NOT be saved.\n"
+        "Trivial exchanges (greetings, one-off questions, simple tool usage) should NOT be saved.\n"
         "If the conversation covers multiple unrelated topics, create separate operations for each.\n"
-        "If the user or agent agreed to do something by a deadline, create a reminder. If it's an open-ended task, create a todo.\n\n"
-        + _SHARED_SCHEMA_RULES
+        "If the user or agent committed to something by a deadline, create a reminder.\n"
+        "If it's an open-ended task with no deadline, create a todo.\n"
+        "Return `[]` if the conversation contains nothing worth saving.\n\n"
+        "Respond with a JSON array of memory operations (no markdown fences).\n\n"
+        + _SCHEMA_FIELDS
     )
 
 
