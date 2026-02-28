@@ -125,7 +125,10 @@ class SubmittableTextArea(TextArea):
             self.value = value
 
     def on_key(self, event: events.Key) -> None:
-        if event.key == "enter":
+        if event.key == "shift+enter":
+            event.prevent_default()
+            self.insert("\n")
+        elif event.key == "enter":
             event.prevent_default()
             text = self.text.strip()
             if text:
@@ -145,7 +148,7 @@ class NotesPane(Vertical):
     def compose(self):
         yield Static("[ notes ]", id="notes-header")
         yield NoteInput(id="notes-input", language=None, soft_wrap=True, show_line_numbers=False)
-        yield Static("Enter: Save  |  Escape: Close", id="notes-footer")
+        yield Static("Enter: Save  |  Shift+Enter: Newline  |  Escape: Close", id="notes-footer")
 
     def on_submittable_text_area_submitted(self, event: SubmittableTextArea.Submitted) -> None:
         spawn_note_background(event.value)
