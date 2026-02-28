@@ -140,7 +140,7 @@ class NoteInput(SubmittableTextArea):
 class NotesPane(Vertical):
     """Side panel note editor — shown/hidden on alt+n / Escape."""
 
-    BINDINGS = [Binding("escape", "close_notes", "Close")]
+    BINDINGS = [Binding("escape", "close_notes", "Close", show=False)]
 
     def compose(self):
         yield Static("[ notes ]", id="notes-header")
