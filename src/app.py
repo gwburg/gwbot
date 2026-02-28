@@ -12,7 +12,7 @@ from models import MODEL_MAP
 from memory import list_tasks as get_open_tasks, load_conversation, new_conversation_id
 from memory.background import spawn_background
 from prompts import SYSTEM_PROMPTS, build_system_prompt
-from widgets import ConversationSelector, ModelSelector, NoteScreen, StatusBar, SubmittableTextArea
+from widgets import ConversationSelector, ModelSelector, NotesPane, StatusBar, SubmittableTextArea
 from agent import (
     AgentEvent,
     RunEndEvent,
@@ -56,6 +56,8 @@ class AgentApp(App):
         Binding("ctrl+q", "quit", "Quit"),
         Binding("ctrl+n", "switch_model", "Switch Model"),
         Binding("ctrl+o", "open_note", "Note"),
+        Binding("ctrl+left", "focus_chat", "Chat", priority=True),
+        Binding("ctrl+right", "focus_notes", "Notes", priority=True),
     ]
 
     def __init__(self, model: str, system_prompt: str, max_iterations: int = 50, initial_note: bool = False, initial_resume: bool = False):
@@ -82,7 +84,9 @@ class AgentApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield VerticalScroll(id="chat-scroll")
+        with Horizontal(id="main-split"):
+            yield VerticalScroll(id="chat-scroll")
+            yield NotesPane(id="notes-pane")
         yield StatusBar(id="status-bar")
         yield Footer()
 
@@ -342,7 +346,20 @@ class AgentApp(App):
         self.exit()
 
     def action_open_note(self) -> None:
-        self.push_screen(NoteScreen())
+        pane = self.query_one("#notes-pane", NotesPane)
+        pane.display = True
+        pane.query_one("#notes-input").focus()
+
+    def action_focus_chat(self) -> None:
+        try:
+            self.query_one("#user-input").focus()
+        except Exception:
+            pass
+
+    def action_focus_notes(self) -> None:
+        pane = self.query_one("#notes-pane", NotesPane)
+        if pane.display:
+            pane.query_one("#notes-input").focus()
 
     def action_switch_model(self) -> None:
         if self._is_running:
@@ -361,8 +378,8 @@ class AgentApp(App):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the agent TUI")
-    parser.add_argument("--model", default="MINIMAX", choices=MODEL_MAP, metavar="MODEL", help=f"Model alias. Choices: {', '.join(MODEL_MAP)}")
-    parser.add_argument("--persona", default="default", choices=SYSTEM_PROMPTS, help=f"System prompt persona. Choices: {', '.join(SYSTEM_PROMPTS)}")
+    parser.add_argument("--model", default="SONNET", choices=MODEL_MAP, metavar="MODEL", help=f"Model alias. Choices: {', '.join(MODEL_MAP)}")
+    parser.add_argument("--persona", default="minimal", choices=SYSTEM_PROMPTS, help=f"System prompt persona. Choices: {', '.join(SYSTEM_PROMPTS)}")
     parser.add_argument("--max-iterations", type=int, default=50)
     parser.add_argument("--note", action="store_true", help="Open note editor on startup")
     parser.add_argument("--resume", action="store_true", help="Resume a previous conversation")

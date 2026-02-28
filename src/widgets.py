@@ -1,9 +1,10 @@
 from models import MODEL_MAP
 from textual import events
 from textual.binding import Binding
+from textual.containers import Vertical
 from textual.message import Message
 from textual.reactive import reactive
-from textual.screen import ModalScreen, Screen
+from textual.screen import ModalScreen
 from textual.widgets import Header, OptionList, Static, TextArea
 from textual.widgets.option_list import Option
 from memory import list_conversations
@@ -132,28 +133,27 @@ class SubmittableTextArea(TextArea):
 
 
 class NoteInput(SubmittableTextArea):
-    """SubmittableTextArea used in the note screen."""
+    """SubmittableTextArea used in the notes pane."""
 
 
-class NoteScreen(Screen):
-    """Full-screen note editor for quickly saving memories."""
+class NotesPane(Vertical):
+    """Side panel note editor — shown/hidden on ctrl+o / Escape."""
 
-    BINDINGS = [
-        Binding("escape", "cancel", "Cancel"),
-    ]
+    BINDINGS = [Binding("escape", "close_notes", "Close")]
 
     def compose(self):
-        yield Header()
-        yield Static("[bold] New Note [/bold]", id="note-header")
-        yield NoteInput(id="note-input", language=None, soft_wrap=True, show_line_numbers=False)
-        yield Static("Enter: Save  |  Escape: Close", id="note-footer")
+        yield Static("[ notes ]", id="notes-header")
+        yield NoteInput(id="notes-input", language=None, soft_wrap=True, show_line_numbers=False)
+        yield Static("Enter: Save  |  Escape: Close", id="notes-footer")
 
-    def on_mount(self):
-        self.query_one("#note-input").focus()
-
-    def on_note_input_submitted(self, event: NoteInput.Submitted) -> None:
+    def on_submittable_text_area_submitted(self, event: SubmittableTextArea.Submitted) -> None:
         spawn_note_background(event.value)
-        self.notify("Note saved", timeout=2)
+        self.app.notify("Note saved", timeout=2)
+        event.stop()
 
-    def action_cancel(self):
-        self.dismiss(None)
+    def action_close_notes(self) -> None:
+        self.display = False
+        try:
+            self.app.query_one("#user-input").focus()
+        except Exception:
+            pass

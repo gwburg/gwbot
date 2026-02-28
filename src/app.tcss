@@ -2,8 +2,14 @@ Screen {
     layout: vertical;
 }
 
-#chat-scroll {
+#main-split {
     height: 1fr;
+    layout: horizontal;
+}
+
+#chat-scroll {
+    width: 3fr;
+    height: 100%;
     scrollbar-size: 1 1;
     padding: 1 0 0 0;
 }
@@ -76,29 +82,37 @@ ModelSelector {
     align: center middle;
 }
 
-NoteScreen {
-    layout: vertical;
+#notes-pane {
+    display: none;
+    width: 1fr;
+    height: 100%;
+    border-left: tall $surface;
 }
 
-#note-header {
+#notes-header {
     height: 1;
+    text-align: center;
+    background: $surface;
+    color: $text-muted;
     padding: 0 1;
-    background: $primary;
-    color: $text;
-    text-style: bold;
 }
 
-#note-input {
+#notes-input {
     height: 1fr;
     border: none;
-    padding: 1 2;
+    background: $background;
+    padding: 1 1;
 }
 
-#note-input:focus {
+#notes-input:focus {
     border: none;
 }
 
-#note-footer {
+#notes-input .text-area--cursor-line {
+    background: $background;
+}
+
+#notes-footer {
     height: 1;
     padding: 0 1;
     background: $surface;
