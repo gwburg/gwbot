@@ -4,6 +4,7 @@ from textual.reactive import reactive
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Header, OptionList, Static, TextArea
 from textual.widgets.option_list import Option
+from memory.background import spawn_note_background
 from rich.text import Text
 
 
@@ -62,17 +63,20 @@ class NoteScreen(Screen):
         yield Header()
         yield Static("[bold] New Note [/bold]", id="note-header")
         yield TextArea(id="note-input", language=None, soft_wrap=True, show_line_numbers=False)
-        yield Static("Enter: Save  |  Escape: Cancel", id="note-footer")
+        yield Static("Enter: Save  |  Escape: Close", id="note-footer")
 
     def on_mount(self):
         self.query_one("#note-input").focus()
 
     def on_key(self, event):
         if event.key == "enter":
-            text = self.query_one("#note-input").text.strip()
+            ta = self.query_one("#note-input", TextArea)
+            text = ta.text.strip()
             if text:
                 event.prevent_default()
-                self.dismiss(text)
+                spawn_note_background(text)
+                ta.load_text("")
+                self.notify("Note saved", timeout=2)
 
     def action_cancel(self):
         self.dismiss(None)

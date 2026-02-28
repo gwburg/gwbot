@@ -11,7 +11,7 @@ from tools import CATEGORY_TAGS, categories as tool_categories, tools
 
 import models
 from memory import new_conversation_id
-from memory.background import spawn_background, spawn_note_background
+from memory.background import spawn_background
 from prompts import SYSTEM_PROMPTS, build_system_prompt
 from widgets import ModelSelector, NoteScreen, StatusBar
 from agent import (
@@ -290,11 +290,7 @@ class AgentApp(App):
         self.exit()
 
     def action_open_note(self) -> None:
-        def on_dismiss(text: str | None) -> None:
-            if text:
-                spawn_note_background(text)
-                self.notify("Note saved", timeout=2)
-        self.push_screen(NoteScreen(), callback=on_dismiss)
+        self.push_screen(NoteScreen())
 
     def action_switch_model(self) -> None:
         if self._is_running:
