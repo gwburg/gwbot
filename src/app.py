@@ -3,6 +3,9 @@ import logging
 import os
 import sys
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from rich.markdown import Markdown
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -452,7 +455,15 @@ def main():
     parser.add_argument("--max-iterations", type=int, default=50)
     parser.add_argument("--note", action="store_true", help="Open note editor on startup")
     parser.add_argument("--resume", action="store_true", help="Resume a previous conversation")
+    parser.add_argument("--init", action="store_true", help="Run interactive setup wizard")
     args = parser.parse_args()
+
+    env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+
+    if args.init or not os.path.exists(env_path) or not os.environ.get("OPENROUTER_API_KEY"):
+        from init import run_init
+        run_init()
+        load_dotenv(override=True)
 
     system_prompt = build_system_prompt(args.persona, tool_categories, CATEGORY_TAGS)
 

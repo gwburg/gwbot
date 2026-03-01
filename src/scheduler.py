@@ -241,8 +241,8 @@ _CRON_COMMENT = "# agent-scheduler"
 _CRON_CMD = f"cd {_SRC_DIR} && uv run python -m scheduler"
 
 
-def install_cron() -> str:
-    """Add a crontab entry that runs the scheduler every 15 minutes."""
+def install_cron(schedule: str = "*/15 * * * *") -> str:
+    """Add a crontab entry that runs the scheduler on the given schedule."""
     import subprocess
 
     try:
@@ -254,7 +254,7 @@ def install_cron() -> str:
     if _CRON_COMMENT in current:
         return "Cron entry already installed."
 
-    entry = f"*/15 * * * * {_CRON_CMD} {_CRON_COMMENT}\n"
+    entry = f"{schedule} {_CRON_CMD} {_CRON_COMMENT}\n"
     new_crontab = current.rstrip("\n") + "\n" + entry if current.strip() else entry
 
     proc = subprocess.run(["crontab", "-"], input=new_crontab, capture_output=True, text=True)
