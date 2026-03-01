@@ -39,7 +39,7 @@ A Textual TUI wrapping an async agentic loop that uses the OpenAI SDK pointed at
 **`src/app.py`** — Textual App entry point:
 - `AgentApp`: Main TUI application. Scrollable chat history, streaming assistant output via a `Static` widget with 50ms flush timer, status bar, input box at bottom.
 - Runs `agent_loop` in a Textual worker. Agent events are delivered via `post_message(AgentMessage(event))` and routed in `on_agent_message()`.
-- On startup, the agent automatically greets the user and surfaces any open TODOs/reminders. The scheduler is also spawned fire-and-forget to catch overdue jobs.
+- On startup, the user sends the first message. The agent only proactively mentions reminders that are overdue or due within 24 hours. The scheduler is also spawned fire-and-forget to catch overdue jobs.
 - CLI: `--model` (aliases from `models.py`), `--max-iterations`, `--persona` (`default`/`casual`/`detailed`/`minimal`), `--note`, `--resume`.
 - Key bindings: `Ctrl+Q`/`Ctrl+C` quit, `Alt+M` switch model, `Alt+N` toggle notes pane, `Alt+H`/`Alt+L` focus chat/notes.
 - On quit, spawns a detached background subprocess to save conversation log and summarize into high-level memories.

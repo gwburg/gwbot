@@ -13,7 +13,7 @@ from textual.widgets import Footer, Header, Static
 from tools import CATEGORY_TAGS, categories as tool_categories, tools
 
 from models import MODEL_MAP
-from memory import list_tasks as get_open_tasks, load_conversation, new_conversation_id
+from memory import load_conversation, new_conversation_id
 from memory.background import process_note, spawn_background
 from prompts import SYSTEM_PROMPTS, build_system_prompt
 from widgets import ConversationSelector, ModelSelector, NotesPane, StatusBar, SubmittableTextArea
@@ -116,8 +116,6 @@ class AgentApp(App):
             self.run_worker(self._show_resume_selector(), exclusive=True)
         elif self.initial_note:
             self.action_open_note()
-        else:
-            self._send_greeting()
 
     async def _show_resume_selector(self) -> None:
         """Fetch model info and show the conversation selector."""
@@ -126,10 +124,8 @@ class AgentApp(App):
         context_length = model_info.get("context_length")
 
         def on_resume(conversation_id: str | None) -> None:
-            if not conversation_id:
-                self._send_greeting()
-                return
-            self._resume_conversation(conversation_id)
+            if conversation_id:
+                self._resume_conversation(conversation_id)
 
         self.push_screen(ConversationSelector(context_length), callback=on_resume)
 
@@ -272,31 +268,6 @@ class AgentApp(App):
             )
         except Exception:
             logging.getLogger(__name__).debug("scheduler spawn failed", exc_info=True)
-
-    def _send_greeting(self) -> None:
-        """Send an automatic greeting, including any open TODOs/reminders."""
-        tasks = get_open_tasks()
-        if tasks:
-            lines = []
-            for t in tasks:
-                preview = (t.get("content", "") or "")[:200]
-                kind = t.get("type", "todo")
-                deadline = t.get("deadline")
-                if deadline:
-                    lines.append(f"- [{kind}] {preview} (due {deadline})")
-                else:
-                    lines.append(f"- [{kind}] {preview}")
-            task_block = "\n".join(lines)
-            greeting = (
-                f"Greet the user (briefly, based on time of day). "
-                f"Then let them know they have the following open tasks:\n{task_block}"
-            )
-        else:
-            greeting = "Greet the user briefly based on the time of day."
-        self.messages.append({"role": "user", "content": greeting})
-        self._is_running = True
-        self._show_spinner()
-        self.run_worker(self._run_agent(), exclusive=True)
 
     def _submit_message(self, text: str) -> None:
         if self._is_running:
