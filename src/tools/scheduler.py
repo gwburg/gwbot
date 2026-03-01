@@ -2,7 +2,6 @@
 
 import os
 import subprocess
-import sys
 
 from memory import create_job, delete_memory, list_jobs, toggle_job
 

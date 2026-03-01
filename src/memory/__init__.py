@@ -374,45 +374,39 @@ def list_jobs(include_disabled: bool = False) -> list[dict]:
     return jobs
 
 
-def update_job_run(job_id: str) -> dict:
-    """Set last_run to now on a job."""
+def _update_job(job_id: str, **overrides) -> dict:
+    """Read an existing job and re-write it with field overrides."""
     existing = _parse_memory_file(job_id)
     if existing is None:
         raise FileNotFoundError(f"Job '{job_id}' not found")
-    now = datetime.now(timezone.utc).isoformat()
-    return _write_memory_file(
-        job_id,
-        existing.get("tags", []),
-        existing.get("content", ""),
-        existing.get("conversation_id"),
-        existing["created"],
-        knowledge_tag=existing.get("knowledge_tag"),
-        type="job",
-        schedule=existing.get("schedule"),
-        last_run=now,
-        enabled=existing.get("enabled", True),
-        max_iterations=existing.get("max_iterations"),
-    )
-
-
-def toggle_job(job_id: str, enabled: bool) -> dict:
-    """Enable or disable a job."""
-    existing = _parse_memory_file(job_id)
-    if existing is None:
-        raise FileNotFoundError(f"Job '{job_id}' not found")
-    return _write_memory_file(
-        job_id,
-        existing.get("tags", []),
-        existing.get("content", ""),
-        existing.get("conversation_id"),
-        existing["created"],
+    defaults = dict(
+        tags=existing.get("tags", []),
+        content=existing.get("content", ""),
+        conversation_id=existing.get("conversation_id"),
+        created=existing["created"],
         knowledge_tag=existing.get("knowledge_tag"),
         type="job",
         schedule=existing.get("schedule"),
         last_run=existing.get("last_run"),
-        enabled=enabled,
+        enabled=existing.get("enabled", True),
         max_iterations=existing.get("max_iterations"),
     )
+    defaults.update(overrides)
+    content = defaults.pop("content")
+    tags = defaults.pop("tags")
+    conversation_id = defaults.pop("conversation_id")
+    created = defaults.pop("created")
+    return _write_memory_file(job_id, tags, content, conversation_id, created, **defaults)
+
+
+def update_job_run(job_id: str) -> dict:
+    """Set last_run to now on a job."""
+    return _update_job(job_id, last_run=datetime.now(timezone.utc).isoformat())
+
+
+def toggle_job(job_id: str, enabled: bool) -> dict:
+    """Enable or disable a job."""
+    return _update_job(job_id, enabled=enabled)
 
 
 # ---------------------------------------------------------------------------

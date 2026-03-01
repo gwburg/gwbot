@@ -22,6 +22,7 @@ from memory import (
     _BASE_DIR,
     list_all_memories,
     list_jobs,
+    toggle_job,
     update_job_run,
     _parse_memory_file,
 )
@@ -158,7 +159,6 @@ async def run_job(client, job: dict) -> None:
     # Disable one-shot jobs (ISO datetime, not cron)
     schedule = job.get("schedule", "")
     if not croniter.is_valid(schedule):
-        from memory import toggle_job
         toggle_job(job_id, enabled=False)
 
     log.info("Completed job %s", job_id)
