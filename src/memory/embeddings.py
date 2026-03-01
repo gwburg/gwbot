@@ -16,7 +16,7 @@ _EMBED_MODEL = "openai/text-embedding-3-small"
 _API_URL = "https://openrouter.ai/api/v1/embeddings"
 
 
-def _get_db() -> sqlite3.Connection:
+def _init_db() -> None:
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(_DB_PATH))
     conn.execute("""
@@ -27,7 +27,14 @@ def _get_db() -> sqlite3.Connection:
         )
     """)
     conn.commit()
-    return conn
+    conn.close()
+
+
+_init_db()
+
+
+def _get_db() -> sqlite3.Connection:
+    return sqlite3.connect(str(_DB_PATH))
 
 
 def _pack_vector(vec: list[float]) -> bytes:
