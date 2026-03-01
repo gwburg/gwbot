@@ -376,6 +376,14 @@ def _parse_job_file(job_id: str) -> dict | None:
     return _parse_frontmatter(path.read_text())
 
 
+def delete_job(job_id: str) -> None:
+    """Delete a job file."""
+    path = _JOBS_DIR / f"{job_id}.md"
+    if not path.exists():
+        raise FileNotFoundError(f"Job '{job_id}' not found")
+    path.unlink()
+
+
 def _update_job(job_id: str, **overrides) -> dict:
     """Read an existing job and re-write it with field overrides."""
     existing = _parse_job_file(job_id)

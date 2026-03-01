@@ -1,6 +1,6 @@
 """Scheduler tools — create, list, and manage timed background jobs."""
 
-from memory import create_job, delete_memory, list_jobs, toggle_job
+from memory import create_job, delete_job, list_jobs, toggle_job
 
 TAG = "scheduler"
 CATEGORY = "Scheduler — create, list, and manage timed background jobs"
@@ -44,7 +44,7 @@ def list_scheduled_jobs(include_disabled: bool = False) -> str:
 def delete_scheduled_job(job_id: str) -> str:
     """Delete a scheduled job by ID."""
     try:
-        delete_memory(job_id)
+        delete_job(job_id)
         return f"Deleted job {job_id}"
     except FileNotFoundError:
         return f"Error: job '{job_id}' not found"
