@@ -110,7 +110,7 @@ class AgentApp(App):
 
         # Fire-and-forget: run scheduler to catch overdue jobs
         self._spawn_scheduler()
-        self.run_worker(self._fetch_credits(), exclusive=False)
+        self.run_worker(self._fetch_credits(), exclusive=False, group="credits")
 
         if self.initial_resume:
             self.run_worker(self._show_resume_selector(), exclusive=True)
