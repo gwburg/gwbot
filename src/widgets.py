@@ -19,11 +19,14 @@ class StatusBar(Static):
     total_tokens: reactive[int] = reactive(0)
     cost_usd: reactive[float] = reactive(0.0)
     context_pct: reactive[float | None] = reactive(None)
+    credits_remaining: reactive[float | None] = reactive(None)
 
     def render(self) -> Text:
         parts = [f"Model: {self.model_name}"]
         parts.append(f"Tokens: {self.total_tokens:,}")
         parts.append(f"Cost: ${self.cost_usd:.4f}")
+        if self.credits_remaining is not None:
+            parts.append(f"Credits: ${self.credits_remaining:.2f}")
         if self.context_pct is not None:
             pct = self.context_pct * 100
             bar_width = 20

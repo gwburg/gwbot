@@ -30,6 +30,7 @@ from agent import (
     _fmt_args,
     agent_loop,
     create_client,
+    fetch_credits,
     fetch_model_info,
 )
 
@@ -109,6 +110,7 @@ class AgentApp(App):
 
         # Fire-and-forget: run scheduler to catch overdue jobs
         self._spawn_scheduler()
+        self.run_worker(self._fetch_credits(), exclusive=False)
 
         if self.initial_resume:
             self.run_worker(self._show_resume_selector(), exclusive=True)
@@ -249,6 +251,12 @@ class AgentApp(App):
         row = self.query_one("#input-row", Horizontal)
         row.remove()
         self._submit_message(text)
+
+    async def _fetch_credits(self) -> None:
+        import asyncio
+        credits = await asyncio.to_thread(fetch_credits)
+        if credits is not None:
+            self.query_one(StatusBar).credits_remaining = credits
 
     def _spawn_scheduler(self) -> None:
         """Spawn the scheduler as a detached subprocess to catch overdue jobs."""

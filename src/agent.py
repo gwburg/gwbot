@@ -93,6 +93,24 @@ def create_client():
     )
 
 
+def fetch_credits() -> float | None:
+    """Return remaining OpenRouter credits in USD, or None on failure."""
+    try:
+        resp = requests.get(
+            "https://openrouter.ai/api/v1/credits",
+            headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+            timeout=5,
+        )
+        data = resp.json().get("data", {})
+        total = data.get("total_credits")
+        usage = data.get("total_usage")
+        if total is not None and usage is not None:
+            return total - usage
+    except Exception:
+        pass
+    return None
+
+
 def fetch_model_info(model: str) -> dict:
     """Return context_length and per-token pricing for a model from OpenRouter."""
     resp = requests.get(
