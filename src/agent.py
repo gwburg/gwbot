@@ -294,6 +294,9 @@ async def call_llm(client, model, messages, tools, on_event: Callable[[AgentEven
     return content, tool_calls, usage
 
 
+_TOOL_TIMEOUT = 60  # seconds before a tool call is considered hung
+
+
 async def execute_tool(tool_call: dict) -> dict:
     name = tool_call["function"]["name"]
     try:
@@ -301,9 +304,12 @@ async def execute_tool(tool_call: dict) -> dict:
         raw_args = tool_call["function"]["arguments"]
         kwargs = json.loads(raw_args) if raw_args else {}
         if inspect.iscoroutinefunction(func):
-            tool_output = await func(**kwargs)
+            coro = func(**kwargs)
         else:
-            tool_output = await asyncio.to_thread(func, **kwargs)
+            coro = asyncio.to_thread(func, **kwargs)
+        tool_output = await asyncio.wait_for(coro, timeout=_TOOL_TIMEOUT)
+    except asyncio.TimeoutError:
+        tool_output = f"Error: tool '{name}' timed out after {_TOOL_TIMEOUT}s"
     except KeyError:
         tool_output = f"Error: tool '{name}' does not exist"
     except Exception as e:
