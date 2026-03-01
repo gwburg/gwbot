@@ -11,7 +11,7 @@ import requests
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from tenacity import (
-    retry,
+    AsyncRetrying,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
@@ -236,61 +236,67 @@ async def agent_loop(client, model, messages, tools, max_iterations=50, on_event
     return messages[-1]
 
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=4, max=60),
-    retry=retry_if_exception_type(
-        (
-            openai.RateLimitError,
-            openai.APIConnectionError,
-            openai.InternalServerError,
-        )
-    ),
-    reraise=True,
-)
+_LLM_TIMEOUTS = [15, 30, 60]  # seconds per attempt; increases on each retry
+
+
 async def call_llm(client, model, messages, tools, on_event: Callable[[AgentEvent], None] | None = None):
-    content_parts = []
-    tool_calls_acc = {}
-    usage = None
-    stream_started = False
+    async for attempt in AsyncRetrying(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=60),
+        retry=retry_if_exception_type(
+            (
+                openai.RateLimitError,
+                openai.APIConnectionError,
+                openai.InternalServerError,
+            )
+        ),
+        reraise=True,
+    ):
+        with attempt:
+            timeout = _LLM_TIMEOUTS[attempt.retry_state.attempt_number - 1]
+            content_parts = []
+            tool_calls_acc = {}
+            usage = None
+            stream_started = False
 
-    stream = await client.chat.completions.create(
-        model=model,
-        tools=tools or None,
-        messages=messages,
-        stream=True,
-        stream_options={"include_usage": True},
-    )
-    async for chunk in stream:
-        if chunk.usage:
-            usage = chunk.usage
-        if not chunk.choices:
-            continue
-        delta = chunk.choices[0].delta
-        if delta.content:
-            if not stream_started:
-                _emit(on_event, StreamStart())
-                stream_started = True
-            content_parts.append(delta.content)
-            _emit(on_event, StreamChunk(text=delta.content))
-        if delta.tool_calls:
-            for tc in delta.tool_calls:
-                idx = tc.index
-                if idx not in tool_calls_acc:
-                    tool_calls_acc[idx] = {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
-                if tc.id:
-                    tool_calls_acc[idx]["id"] = tc.id
-                if tc.function:
-                    if tc.function.name:
-                        tool_calls_acc[idx]["function"]["name"] += tc.function.name
-                    if tc.function.arguments:
-                        tool_calls_acc[idx]["function"]["arguments"] += tc.function.arguments
+            stream = await client.chat.completions.create(
+                model=model,
+                tools=tools or None,
+                messages=messages,
+                stream=True,
+                stream_options={"include_usage": True},
+                timeout=timeout,
+            )
+            async for chunk in stream:
+                if chunk.usage:
+                    usage = chunk.usage
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    if not stream_started:
+                        _emit(on_event, StreamStart())
+                        stream_started = True
+                    content_parts.append(delta.content)
+                    _emit(on_event, StreamChunk(text=delta.content))
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index
+                        if idx not in tool_calls_acc:
+                            tool_calls_acc[idx] = {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
+                        if tc.id:
+                            tool_calls_acc[idx]["id"] = tc.id
+                        if tc.function:
+                            if tc.function.name:
+                                tool_calls_acc[idx]["function"]["name"] += tc.function.name
+                            if tc.function.arguments:
+                                tool_calls_acc[idx]["function"]["arguments"] += tc.function.arguments
 
-    content = "".join(content_parts) or None
-    tool_calls = [tool_calls_acc[i] for i in sorted(tool_calls_acc)] or None
+            content = "".join(content_parts) or None
+            tool_calls = [tool_calls_acc[i] for i in sorted(tool_calls_acc)] or None
 
-    if stream_started:
-        _emit(on_event, StreamEnd(content=content))
+            if stream_started:
+                _emit(on_event, StreamEnd(content=content))
 
     return content, tool_calls, usage
 
