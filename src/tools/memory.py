@@ -6,6 +6,7 @@ from memory import (
     complete_recurring_task as _complete_recurring,
     create_memory as _create_memory,
     delete_memory as _delete_memory,
+    delete_tag as _delete_tag,
     get_tags as _get_tags,
     list_tasks as _list_tasks,
     read_conversation as _read_conversation,
@@ -72,6 +73,14 @@ def list_tags() -> str:
     if not tags:
         return "No tags yet."
     return ", ".join(tags)
+
+
+def delete_tag(tag: str) -> str:
+    still_using = _delete_tag(tag)
+    msg = f"Tag '{tag}' removed from tags.yaml."
+    if still_using:
+        msg += f" Note: {still_using} memory/memories still reference this tag."
+    return msg
 
 
 def create_todo(content: str, tags: str, owner: str = "user") -> str:
@@ -307,6 +316,26 @@ tools = [
     {
         "type": "function",
         "function": {
+            "name": "delete_tag",
+            "description": (
+                "Remove a tag from tags.yaml. "
+                "Reports how many memories still reference the deleted tag."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tag": {
+                        "type": "string",
+                        "description": "The tag name to delete",
+                    },
+                },
+                "required": ["tag"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "create_todo",
             "description": "Create a TODO list. Use markdown checkbox format for multiple items: '- [ ] item'. Completed items are removed one by one via complete_task; the list is deleted when all items are done.",
             "parameters": {
@@ -408,6 +437,7 @@ TOOL_MAPPING = {
     "update_memory": update_memory,
     "delete_memory": delete_memory,
     "list_tags": list_tags,
+    "delete_tag": delete_tag,
     "create_todo": create_todo,
     "create_reminder": create_reminder,
     "complete_task": complete_task,

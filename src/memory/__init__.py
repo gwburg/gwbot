@@ -402,3 +402,12 @@ def _add_tags(new_tags: list[str]) -> None:
     existing = set(get_tags())
     updated = sorted(existing | set(new_tags))
     _TAGS_FILE.write_text(yaml.dump(updated, default_flow_style=False))
+
+
+def delete_tag(tag: str) -> int:
+    """Remove a tag from tags.yaml. Returns number of memories still using it."""
+    existing = get_tags()
+    updated = [t for t in existing if t != tag]
+    _TAGS_FILE.write_text(yaml.dump(updated, default_flow_style=False))
+    still_using = sum(1 for m in list_all_memories() if tag in m.get("tags", []))
+    return still_using
