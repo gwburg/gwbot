@@ -1,4 +1,6 @@
 import argparse
+import os
+import sys
 
 from rich.markdown import Markdown
 from textual.app import App, ComposeResult
@@ -103,6 +105,10 @@ class AgentApp(App):
         self._note_spinner_timer = self.set_interval(0.08, self._tick_note_spinner, pause=True)
         self._note_queue: list[str] = []
         self._note_processing = False
+
+        # Fire-and-forget: run scheduler to catch overdue jobs
+        self._spawn_scheduler()
+
         if self.initial_resume:
             self.run_worker(self._show_resume_selector(), exclusive=True)
         elif self.initial_note:
@@ -242,6 +248,21 @@ class AgentApp(App):
         row = self.query_one("#input-row", Horizontal)
         row.remove()
         self._submit_message(text)
+
+    def _spawn_scheduler(self) -> None:
+        """Spawn the scheduler as a detached subprocess to catch overdue jobs."""
+        import subprocess as _sp
+        try:
+            _sp.Popen(
+                [sys.executable, "-m", "scheduler"],
+                cwd=os.path.join(os.path.dirname(__file__)),
+                start_new_session=True,
+                stdin=_sp.DEVNULL,
+                stdout=_sp.DEVNULL,
+                stderr=_sp.DEVNULL,
+            )
+        except Exception:
+            pass  # Non-fatal — scheduler is best-effort
 
     def _send_greeting(self) -> None:
         """Send an automatic greeting, including any open TODOs/reminders."""

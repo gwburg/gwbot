@@ -122,7 +122,7 @@ def list_conversations(limit: int = 0, offset: int = 0) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def _write_memory_file(memory_id: str, tags: list[str], content: str, conversation_id: str | None = None, created: str | None = None, knowledge_tag: str | None = None, type: str = "memory", deadline: str | None = None, owner: str | None = None, recurring: bool = False, last_completed: str | None = None) -> dict:
+def _write_memory_file(memory_id: str, tags: list[str], content: str, conversation_id: str | None = None, created: str | None = None, knowledge_tag: str | None = None, type: str = "memory", deadline: str | None = None, owner: str | None = None, recurring: bool = False, last_completed: str | None = None, schedule: str | None = None, last_run: str | None = None, enabled: bool | None = None, max_iterations: int | None = None) -> dict:
     """Write a high-level memory .md file with YAML frontmatter."""
     ensure_dirs()
     now = datetime.now(timezone.utc).isoformat()
@@ -144,6 +144,14 @@ def _write_memory_file(memory_id: str, tags: list[str], content: str, conversati
         meta["knowledge_tag"] = knowledge_tag
     if last_completed:
         meta["last_completed"] = last_completed
+    if schedule:
+        meta["schedule"] = schedule
+    if last_run:
+        meta["last_run"] = last_run
+    if enabled is not None:
+        meta["enabled"] = enabled
+    if max_iterations:
+        meta["max_iterations"] = max_iterations
     if conversation_id:
         meta["conversation_id"] = conversation_id
 
@@ -337,6 +345,74 @@ def search_memories(query: str | None = None, tags: list[str] | None = None) -> 
 
     scored.sort(key=lambda x: -x[0])
     return [_build_result(m, score=s) for s, m in scored]
+
+
+# ---------------------------------------------------------------------------
+# Jobs
+# ---------------------------------------------------------------------------
+
+
+def create_job(prompt: str, schedule: str, tags: list[str] | None = None, max_iterations: int = 5) -> dict:
+    """Create a new scheduled job and return its metadata."""
+    memory_id = uuid4().hex[:12]
+    return _write_memory_file(
+        memory_id,
+        tags or [],
+        prompt,
+        type="job",
+        schedule=schedule,
+        enabled=True,
+        max_iterations=max_iterations,
+    )
+
+
+def list_jobs(include_disabled: bool = False) -> list[dict]:
+    """Return all job memories, optionally including disabled ones."""
+    jobs = [m for m in list_all_memories() if m.get("type") == "job"]
+    if not include_disabled:
+        jobs = [j for j in jobs if j.get("enabled", True)]
+    return jobs
+
+
+def update_job_run(job_id: str) -> dict:
+    """Set last_run to now on a job."""
+    existing = _parse_memory_file(job_id)
+    if existing is None:
+        raise FileNotFoundError(f"Job '{job_id}' not found")
+    now = datetime.now(timezone.utc).isoformat()
+    return _write_memory_file(
+        job_id,
+        existing.get("tags", []),
+        existing.get("content", ""),
+        existing.get("conversation_id"),
+        existing["created"],
+        knowledge_tag=existing.get("knowledge_tag"),
+        type="job",
+        schedule=existing.get("schedule"),
+        last_run=now,
+        enabled=existing.get("enabled", True),
+        max_iterations=existing.get("max_iterations"),
+    )
+
+
+def toggle_job(job_id: str, enabled: bool) -> dict:
+    """Enable or disable a job."""
+    existing = _parse_memory_file(job_id)
+    if existing is None:
+        raise FileNotFoundError(f"Job '{job_id}' not found")
+    return _write_memory_file(
+        job_id,
+        existing.get("tags", []),
+        existing.get("content", ""),
+        existing.get("conversation_id"),
+        existing["created"],
+        knowledge_tag=existing.get("knowledge_tag"),
+        type="job",
+        schedule=existing.get("schedule"),
+        last_run=existing.get("last_run"),
+        enabled=enabled,
+        max_iterations=existing.get("max_iterations"),
+    )
 
 
 # ---------------------------------------------------------------------------

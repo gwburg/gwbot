@@ -112,6 +112,7 @@ Type guide:
 - "memory": a fact, preference, decision, or instruction worth remembering long-term.
 - "todo": a list of tasks (markdown checkboxes). Items are completed one by one; list is deleted when empty. owner="user" or "agent".
 - "reminder": a time-sensitive item. Requires deadline. Use recurring=true for repeating tasks.
+- "job": NEVER create this type — jobs are only created via the scheduler tools.
 
 Dedup rules:
 - If content overlaps with an existing memory, set duplicate_of + updated_content to merge; don't create a duplicate.
