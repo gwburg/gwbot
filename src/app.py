@@ -91,6 +91,7 @@ class AgentApp(App):
         self._has_agent_label = False  # whether [agent] label has been mounted this turn
         self._user_sent_message = False  # whether the user has typed a message
         self._ctrl_c_pressed = False  # tracks double ctrl+c for quit
+        self._is_exiting = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -303,7 +304,8 @@ class AgentApp(App):
             self._append_widget(f"[{C_WARN}]\\[error][/] {e}")
         finally:
             self._is_running = False
-            self._mount_input()
+            if not self._is_exiting:
+                self._mount_input()
 
     def _render_tool(self, connector: str, name: str, args: dict) -> str:
         return f"[{C_DIM}]{connector}[/] [{C_TOOL}]\\[tool][/] [{C_DIM}]{name}({_fmt_args(args)})[/]"
@@ -386,6 +388,7 @@ class AgentApp(App):
 
     async def action_quit(self) -> None:
         """Spawn background memory process, then quit immediately."""
+        self._is_exiting = True
         if self._user_sent_message:
             try:
                 spawn_background(self.conversation_id, self.messages)
