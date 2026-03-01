@@ -462,7 +462,7 @@ class AgentApp(App):
         self.push_screen(ModelSelector(), callback=on_dismiss)
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description="Run the agent TUI")
     parser.add_argument("--model", default="SONNET", choices=MODEL_MAP, metavar="MODEL", help=f"Model alias. Choices: {', '.join(MODEL_MAP)}")
     parser.add_argument("--persona", default="minimal", choices=SYSTEM_PROMPTS, help=f"System prompt persona. Choices: {', '.join(SYSTEM_PROMPTS)}")
@@ -481,3 +481,7 @@ if __name__ == "__main__":
         initial_resume=args.resume,
     )
     app.run()
+
+
+if __name__ == "__main__":
+    main()
