@@ -19,7 +19,7 @@ from memory import (
     update_memory,
 )
 
-DEFAULT_MODEL = models.MINIMAX
+DEFAULT_MODEL = models.SONNET
 
 
 def _strip_fences(raw: str) -> str:
