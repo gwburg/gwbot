@@ -97,18 +97,23 @@ def run_init() -> None:
         if do_review == "y":
             from memory import create_job
             _REVIEW_PROMPT = (
-                "Review all stored memories for quality and relevance.\n\n"
+                "Review all stored memories for quality, relevance and hidden insights\n\n"
                 "1. Use search_memories (empty query) to list everything.\n"
-                "2. Use read_memory on any that look potentially outdated, contradictory, or redundant.\n"
+                "2. Use read_memory on any that look either outdated, contradictory, "
+                "or redundant OR of interest relative to other memories or jobs\n"
                 "3. Rules:\n"
                 "   - Only act if there is a clear, tangible benefit. Otherwise do nothing.\n"
                 "   - You may update or delete memories that are outdated, contradictory, or redundant.\n"
-                "   - You may create todos or reminders if cross-referencing reveals "
+                "   - You may create new memories, todos, reminders, or jobs if cross-referencing reveals "
                 "a genuinely useful action item or deadline the user would benefit from.\n"
                 "   - Do NOT summarize or restate what is already stored.\n"
                 "   - Do NOT create entries just for the sake of creating them.\n"
                 "   - Be conservative — the bar for action should be high.\n"
-                "4. If everything looks fine, simply respond that no changes are needed."
+                "4. If everything looks fine, simply respond that no changes are needed.\n"
+                "5. If you have taken any actions, log those in a memory tagged 'update' "
+                "with knowledge_tag 'always' outlining what you've done and it should be "
+                "reported to the user in the next conversation. It should also note that "
+                "the memory should be deleted after being reported to the user."
             )
             create_job(prompt=_REVIEW_PROMPT, schedule="0 3 * * *", tags=["review", "maintenance"])
             print("  Created nightly review job.")
