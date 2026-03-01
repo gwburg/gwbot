@@ -233,6 +233,78 @@ async def run_daily_review(client) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Cron management (CLI only — not exposed as LLM tools)
+# ---------------------------------------------------------------------------
+
+_SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+_CRON_COMMENT = "# agent-scheduler"
+_CRON_CMD = f"cd {_SRC_DIR} && uv run python -m scheduler"
+
+
+def install_cron() -> str:
+    """Add a crontab entry that runs the scheduler every 15 minutes."""
+    import subprocess
+
+    try:
+        existing = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+        current = existing.stdout if existing.returncode == 0 else ""
+    except Exception:
+        current = ""
+
+    if _CRON_COMMENT in current:
+        return "Cron entry already installed."
+
+    entry = f"*/15 * * * * {_CRON_CMD} {_CRON_COMMENT}\n"
+    new_crontab = current.rstrip("\n") + "\n" + entry if current.strip() else entry
+
+    proc = subprocess.run(["crontab", "-"], input=new_crontab, capture_output=True, text=True)
+    if proc.returncode != 0:
+        return f"Error installing cron: {proc.stderr}"
+    return f"Installed: {entry.strip()}"
+
+
+def uninstall_cron() -> str:
+    """Remove the agent-scheduler crontab entry."""
+    import subprocess
+
+    try:
+        existing = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+        if existing.returncode != 0:
+            return "No crontab found."
+        current = existing.stdout
+    except Exception:
+        return "No crontab found."
+
+    lines = [l for l in current.splitlines() if _CRON_COMMENT not in l]
+    new_crontab = "\n".join(lines) + "\n" if lines else ""
+
+    if new_crontab.strip():
+        proc = subprocess.run(["crontab", "-"], input=new_crontab, capture_output=True, text=True)
+    else:
+        proc = subprocess.run(["crontab", "-r"], capture_output=True, text=True)
+
+    if proc.returncode != 0:
+        return f"Error: {proc.stderr}"
+    return "Removed agent-scheduler cron entry."
+
+
+def show_cron() -> str:
+    """Show current agent-related crontab entries."""
+    import subprocess
+
+    try:
+        result = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+        if result.returncode != 0:
+            return "No crontab found."
+        lines = [l for l in result.stdout.splitlines() if _CRON_COMMENT in l]
+        if not lines:
+            return "No agent-scheduler entries in crontab."
+        return "\n".join(lines)
+    except Exception:
+        return "No crontab found."
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -278,7 +350,21 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Agent scheduler — headless runner for cron")
     parser.add_argument("--run", metavar="ID", help="Run a specific job by ID")
     parser.add_argument("--review", action="store_true", help="Force daily memory review")
+    parser.add_argument("--install-cron", action="store_true", help="Install crontab entry (every 15 min)")
+    parser.add_argument("--uninstall-cron", action="store_true", help="Remove crontab entry")
+    parser.add_argument("--show-cron", action="store_true", help="Show agent-scheduler crontab entries")
     args = parser.parse_args()
+
+    # Cron management — instant operations, no lock needed
+    if args.install_cron:
+        print(install_cron())
+        sys.exit(0)
+    if args.uninstall_cron:
+        print(uninstall_cron())
+        sys.exit(0)
+    if args.show_cron:
+        print(show_cron())
+        sys.exit(0)
 
     if not _acquire_lock():
         log.info("Another scheduler instance is running — exiting")

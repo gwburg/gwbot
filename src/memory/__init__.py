@@ -122,46 +122,30 @@ def list_conversations(limit: int = 0, offset: int = 0) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def _write_memory_file(memory_id: str, tags: list[str], content: str, conversation_id: str | None = None, created: str | None = None, knowledge_tag: str | None = None, type: str = "memory", deadline: str | None = None, owner: str | None = None, recurring: bool = False, last_completed: str | None = None, schedule: str | None = None, last_run: str | None = None, enabled: bool | None = None, max_iterations: int | None = None) -> dict:
-    """Write a high-level memory .md file with YAML frontmatter."""
+def _write_memory_file(meta: dict, content: str) -> dict:
+    """Write a high-level memory .md file with YAML frontmatter.
+
+    ``meta`` must contain at least ``id`` and ``tags``.
+    ``created`` is set automatically if missing; ``updated`` is always refreshed.
+    The ``type`` key is omitted from frontmatter when it equals ``"memory"``
+    (the default) to keep files clean.
+    """
     ensure_dirs()
     now = datetime.now(timezone.utc).isoformat()
-    meta = {
-        "id": memory_id,
-        "tags": tags,
-        "created": created or now,
-        "updated": now,
-    }
-    if type != "memory":
-        meta["type"] = type
-    if deadline:
-        meta["deadline"] = deadline
-    if owner:
-        meta["owner"] = owner
-    if recurring:
-        meta["recurring"] = True
-    if knowledge_tag:
-        meta["knowledge_tag"] = knowledge_tag
-    if last_completed:
-        meta["last_completed"] = last_completed
-    if schedule:
-        meta["schedule"] = schedule
-    if last_run:
-        meta["last_run"] = last_run
-    if enabled is not None:
-        meta["enabled"] = enabled
-    if max_iterations:
-        meta["max_iterations"] = max_iterations
-    if conversation_id:
-        meta["conversation_id"] = conversation_id
+    meta.setdefault("created", now)
+    meta["updated"] = now
+
+    # Strip the default type to keep frontmatter minimal
+    if meta.get("type") == "memory":
+        meta.pop("type")
 
     frontmatter = yaml.dump(meta, default_flow_style=False, sort_keys=False).strip()
     doc = f"---\n{frontmatter}\n---\n{content}\n"
 
-    path = _HIGH_DIR / f"{memory_id}.md"
+    path = _HIGH_DIR / f"{meta['id']}.md"
     path.write_text(doc)
 
-    _add_tags(tags)
+    _add_tags(meta.get("tags", []))
 
     # Best-effort embedding — non-fatal on failure
     try:
@@ -169,7 +153,7 @@ def _write_memory_file(memory_id: str, tags: list[str], content: str, conversati
 
         vector = compute_embedding(content)
         if vector:
-            store_embedding(memory_id, vector)
+            store_embedding(meta["id"], vector)
     except Exception:
         pass
 
@@ -178,8 +162,18 @@ def _write_memory_file(memory_id: str, tags: list[str], content: str, conversati
 
 def create_memory(content: str, tags: list[str], conversation_id: str | None = None, knowledge_tag: str | None = None, type: str = "memory", deadline: str | None = None, owner: str | None = None, recurring: bool = False) -> dict:
     """Create a new high-level memory and return its metadata."""
-    memory_id = uuid4().hex[:12]
-    return _write_memory_file(memory_id, tags, content, conversation_id, knowledge_tag=knowledge_tag, type=type, deadline=deadline, owner=owner, recurring=recurring)
+    meta: dict = {"id": uuid4().hex[:12], "tags": tags, "type": type}
+    if conversation_id:
+        meta["conversation_id"] = conversation_id
+    if knowledge_tag:
+        meta["knowledge_tag"] = knowledge_tag
+    if deadline:
+        meta["deadline"] = deadline
+    if owner:
+        meta["owner"] = owner
+    if recurring:
+        meta["recurring"] = True
+    return _write_memory_file(meta, content)
 
 
 def complete_recurring_task(memory_id: str) -> dict:
@@ -187,20 +181,9 @@ def complete_recurring_task(memory_id: str) -> dict:
     existing = _parse_memory_file(memory_id)
     if existing is None:
         raise FileNotFoundError(f"Memory '{memory_id}' not found")
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    return _write_memory_file(
-        memory_id,
-        existing["tags"],
-        existing["content"],
-        existing.get("conversation_id"),
-        existing["created"],
-        knowledge_tag=existing.get("knowledge_tag"),
-        type=existing.get("type", "memory"),
-        deadline=existing.get("deadline"),
-        owner=existing.get("owner"),
-        recurring=existing.get("recurring", False),
-        last_completed=today,
-    )
+    content = existing.pop("content", "")
+    existing["last_completed"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return _write_memory_file(existing, content)
 
 
 def update_memory(memory_id: str, content: str | None = None, tags: list[str] | None = None, knowledge_tag: str | None = None, deadline: str | None = None) -> dict:
@@ -209,11 +192,15 @@ def update_memory(memory_id: str, content: str | None = None, tags: list[str] | 
     if existing is None:
         raise FileNotFoundError(f"Memory '{memory_id}' not found")
 
-    new_content = content if content is not None else existing["content"]
-    new_tags = tags if tags is not None else existing["tags"]
-    new_knowledge_tag = knowledge_tag if knowledge_tag is not None else existing.get("knowledge_tag")
-    new_deadline = deadline if deadline is not None else existing.get("deadline")
-    return _write_memory_file(memory_id, new_tags, new_content, existing.get("conversation_id"), existing["created"], knowledge_tag=new_knowledge_tag, type=existing.get("type", "memory"), deadline=new_deadline, owner=existing.get("owner"), recurring=existing.get("recurring", False), last_completed=existing.get("last_completed"))
+    new_content = content if content is not None else existing.pop("content", "")
+    existing.pop("content", None)
+    if tags is not None:
+        existing["tags"] = tags
+    if knowledge_tag is not None:
+        existing["knowledge_tag"] = knowledge_tag
+    if deadline is not None:
+        existing["deadline"] = deadline
+    return _write_memory_file(existing, new_content)
 
 
 def delete_memory(memory_id: str) -> None:
@@ -354,16 +341,15 @@ def search_memories(query: str | None = None, tags: list[str] | None = None) -> 
 
 def create_job(prompt: str, schedule: str, tags: list[str] | None = None, max_iterations: int = 5) -> dict:
     """Create a new scheduled job and return its metadata."""
-    memory_id = uuid4().hex[:12]
-    return _write_memory_file(
-        memory_id,
-        tags or [],
-        prompt,
-        type="job",
-        schedule=schedule,
-        enabled=True,
-        max_iterations=max_iterations,
-    )
+    meta: dict = {
+        "id": uuid4().hex[:12],
+        "tags": tags or [],
+        "type": "job",
+        "schedule": schedule,
+        "enabled": True,
+        "max_iterations": max_iterations,
+    }
+    return _write_memory_file(meta, prompt)
 
 
 def list_jobs(include_disabled: bool = False) -> list[dict]:
@@ -379,24 +365,9 @@ def _update_job(job_id: str, **overrides) -> dict:
     existing = _parse_memory_file(job_id)
     if existing is None:
         raise FileNotFoundError(f"Job '{job_id}' not found")
-    defaults = dict(
-        tags=existing.get("tags", []),
-        content=existing.get("content", ""),
-        conversation_id=existing.get("conversation_id"),
-        created=existing["created"],
-        knowledge_tag=existing.get("knowledge_tag"),
-        type="job",
-        schedule=existing.get("schedule"),
-        last_run=existing.get("last_run"),
-        enabled=existing.get("enabled", True),
-        max_iterations=existing.get("max_iterations"),
-    )
-    defaults.update(overrides)
-    content = defaults.pop("content")
-    tags = defaults.pop("tags")
-    conversation_id = defaults.pop("conversation_id")
-    created = defaults.pop("created")
-    return _write_memory_file(job_id, tags, content, conversation_id, created, **defaults)
+    content = existing.pop("content", "")
+    existing.update(overrides)
+    return _write_memory_file(existing, content)
 
 
 def update_job_run(job_id: str) -> dict:

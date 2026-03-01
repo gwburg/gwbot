@@ -1,16 +1,9 @@
 """Scheduler tools — create, list, and manage timed background jobs."""
 
-import os
-import subprocess
-
 from memory import create_job, delete_memory, list_jobs, toggle_job
 
 TAG = "scheduler"
 CATEGORY = "Scheduler — create, list, and manage timed background jobs"
-
-_SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_CRON_COMMENT = "# agent-scheduler"
-_CRON_CMD = f"cd {_SRC_DIR} && uv run python -m scheduler"
 
 
 def create_scheduled_job(
@@ -65,78 +58,6 @@ def toggle_scheduled_job(job_id: str, enabled: bool) -> str:
         return f"Job {job_id} is now {state}"
     except FileNotFoundError:
         return f"Error: job '{job_id}' not found"
-
-
-def install_cron() -> str:
-    """Add a crontab entry that runs the scheduler every 15 minutes."""
-    try:
-        existing = subprocess.run(
-            ["crontab", "-l"], capture_output=True, text=True
-        )
-        current = existing.stdout if existing.returncode == 0 else ""
-    except Exception:
-        current = ""
-
-    if _CRON_COMMENT in current:
-        return "Cron entry already installed. Use show_cron to view it."
-
-    entry = f"*/15 * * * * {_CRON_CMD} {_CRON_COMMENT}\n"
-    new_crontab = current.rstrip("\n") + "\n" + entry if current.strip() else entry
-
-    try:
-        proc = subprocess.run(
-            ["crontab", "-"], input=new_crontab, capture_output=True, text=True
-        )
-        if proc.returncode != 0:
-            return f"Error installing cron: {proc.stderr}"
-        return f"Installed cron entry: {entry.strip()}"
-    except Exception as e:
-        return f"Error: {e}"
-
-
-def uninstall_cron() -> str:
-    """Remove the agent-scheduler crontab entry."""
-    try:
-        existing = subprocess.run(
-            ["crontab", "-l"], capture_output=True, text=True
-        )
-        if existing.returncode != 0:
-            return "No crontab found."
-        current = existing.stdout
-    except Exception:
-        return "No crontab found."
-
-    lines = [l for l in current.splitlines() if _CRON_COMMENT not in l]
-    new_crontab = "\n".join(lines) + "\n" if lines else ""
-
-    if new_crontab.strip():
-        proc = subprocess.run(
-            ["crontab", "-"], input=new_crontab, capture_output=True, text=True
-        )
-    else:
-        proc = subprocess.run(
-            ["crontab", "-r"], capture_output=True, text=True
-        )
-
-    if proc.returncode != 0:
-        return f"Error: {proc.stderr}"
-    return "Removed agent-scheduler cron entry."
-
-
-def show_cron() -> str:
-    """Show current agent-related crontab entries."""
-    try:
-        result = subprocess.run(
-            ["crontab", "-l"], capture_output=True, text=True
-        )
-        if result.returncode != 0:
-            return "No crontab found."
-        lines = [l for l in result.stdout.splitlines() if _CRON_COMMENT in l]
-        if not lines:
-            return "No agent-scheduler entries in crontab."
-        return "\n".join(lines)
-    except Exception:
-        return "No crontab found."
 
 
 tools = [
@@ -227,30 +148,6 @@ tools = [
             },
         },
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "install_cron",
-            "description": "Install a crontab entry that runs the scheduler every 15 minutes. Idempotent — won't duplicate.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "uninstall_cron",
-            "description": "Remove the agent-scheduler crontab entry.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "show_cron",
-            "description": "Show current agent-scheduler crontab entries.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
 ]
 
 TOOL_MAPPING = {
@@ -258,7 +155,4 @@ TOOL_MAPPING = {
     "list_scheduled_jobs": list_scheduled_jobs,
     "delete_scheduled_job": delete_scheduled_job,
     "toggle_scheduled_job": toggle_scheduled_job,
-    "install_cron": install_cron,
-    "uninstall_cron": uninstall_cron,
-    "show_cron": show_cron,
 }

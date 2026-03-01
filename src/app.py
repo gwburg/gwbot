@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import sys
 
@@ -262,7 +263,7 @@ class AgentApp(App):
                 stderr=_sp.DEVNULL,
             )
         except Exception:
-            pass  # Non-fatal — scheduler is best-effort
+            logging.getLogger(__name__).debug("scheduler spawn failed", exc_info=True)
 
     def _send_greeting(self) -> None:
         """Send an automatic greeting, including any open TODOs/reminders."""

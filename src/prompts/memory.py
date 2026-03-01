@@ -42,7 +42,7 @@ def build_memory_prompt(category_tags: list[str] | None = None) -> str:
         "### Scheduled jobs\n"
         "- Use `create_scheduled_job` to create background tasks that run on a timer.\n"
         "- Schedule with a cron expression (e.g. `0 9 * * *` = 9am daily) or ISO datetime for one-shot.\n"
-        "- After creating a job, call `install_cron` to ensure the scheduler crontab entry is set up.\n"
+        "- After creating a job, ensure the crontab is set up by running `python -m scheduler --install-cron` via bash.\n"
         "- Jobs run headlessly via `python -m scheduler` — they have memory and shell tools available.\n"
         "- Use `list_scheduled_jobs`, `toggle_scheduled_job`, `delete_scheduled_job` to manage.\n\n"
         "### Knowledge tags\n"
