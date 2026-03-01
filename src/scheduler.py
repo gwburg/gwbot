@@ -131,11 +131,7 @@ async def run_job(client, job: dict) -> None:
 
     tool_names = ["bash", "text_editor", "search_memories", "read_memory",
                   "create_memory", "update_memory"]
-    try:
-        job_tools, _ = get_tools(tool_names)
-    except ValueError:
-        # Fall back to just memory + bash if some tools don't exist
-        job_tools, _ = get_tools(["bash"])
+    job_tools, _ = get_tools(tool_names)
 
     messages = [
         {"role": "system", "content": (
