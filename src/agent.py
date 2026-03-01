@@ -3,6 +3,7 @@ import inspect
 import json
 import os
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Callable
 
 import openai
@@ -315,8 +316,9 @@ async def execute_tool(tool_call: dict) -> dict:
     except Exception as e:
         tool_output = f"Error calling '{name}': {e}"
 
+    ts = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
     return {
         "role": "tool",
         "tool_call_id": tool_call["id"],
-        "content": str(tool_output),
+        "content": f"{ts}\n{tool_output}",
     }

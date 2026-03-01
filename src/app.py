@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 import sys
+from datetime import datetime
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -284,7 +285,8 @@ class AgentApp(App):
         self._user_sent_message = True
         self._append_widget(f"[{C_USER}]\\[user][/] {text}", classes="message user-msg")
 
-        self.messages.append({"role": "user", "content": text})
+        ts = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
+        self.messages.append({"role": "user", "content": f"{ts} {text}"})
         self._is_running = True
         self._show_spinner()
         self.run_worker(self._run_agent(), exclusive=True)
