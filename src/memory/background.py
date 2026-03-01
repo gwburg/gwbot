@@ -171,9 +171,15 @@ def _format_existing_memories(memories: list[dict]) -> str:
     lines = []
     for m in memories:
         content = m.get("content", "")
-        preview = content[:200] + ("..." if len(content) > 200 else "")
         tags = ", ".join(m.get("tags", []))
-        lines.append(f"- [{m.get('id')}] tags=[{tags}]: {preview}")
+        mtype = m.get("type", "memory")
+        mid = m.get("id")
+        if mtype == "todo":
+            # Show full content so all checklist items are visible
+            lines.append(f"- [{mid}] type=todo tags=[{tags}]:\n{content}")
+        else:
+            preview = content[:200] + ("..." if len(content) > 200 else "")
+            lines.append(f"- [{mid}] type={mtype} tags=[{tags}]: {preview}")
     return "\n".join(lines)
 
 
