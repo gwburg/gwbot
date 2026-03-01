@@ -101,6 +101,8 @@ class AgentApp(App):
         self._spinner_timer = self.set_interval(0.08, self._tick_spinner, pause=True)
         self._note_spinner_frame = 0
         self._note_spinner_timer = self.set_interval(0.08, self._tick_note_spinner, pause=True)
+        self._note_queue: list[str] = []
+        self._note_processing = False
         if self.initial_resume:
             self.run_worker(self._show_resume_selector(), exclusive=True)
         elif self.initial_note:
@@ -201,18 +203,24 @@ class AgentApp(App):
             pass
 
     def on_notes_pane_note_submitted(self, event: NotesPane.NoteSubmitted) -> None:
-        self._note_spinner_frame = 0
-        self._note_spinner_timer.resume()
-        self.run_worker(self._run_note_processing(event.text), exclusive=False)
+        self._note_queue.append(event.text)
+        if not self._note_processing:
+            self._note_processing = True
+            self._note_spinner_frame = 0
+            self._note_spinner_timer.resume()
+            self.run_worker(self._drain_note_queue(), exclusive=False)
 
-    async def _run_note_processing(self, text: str) -> None:
-        try:
-            await process_note(self.client, text)
-            result = "✓ Note remembered"
-        except Exception:
-            result = "✗ Failed to save note"
+    async def _drain_note_queue(self) -> None:
+        errors = 0
+        while self._note_queue:
+            text = self._note_queue.pop(0)
+            try:
+                await process_note(self.client, text)
+            except Exception:
+                errors += 1
+        self._note_processing = False
         self._note_spinner_timer.pause()
-        self._set_notes_footer(result)
+        self._set_notes_footer("✗ Failed to save note" if errors else "✓ Note remembered")
         self.set_timer(2.5, lambda: self._set_notes_footer(NotesPane.FOOTER_DEFAULT))
 
     def _mount_input(self) -> None:
