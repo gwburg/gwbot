@@ -3,7 +3,7 @@
 from memory import create_job, delete_job, list_jobs, toggle_job
 
 TAG = "scheduler"
-CATEGORY = "Scheduler — create, list, and manage timed background jobs"
+CATEGORY = "Scheduler — create, list, and manage scheduled background jobs"
 
 
 def create_scheduled_job(
@@ -66,8 +66,8 @@ tools = [
         "function": {
             "name": "create_scheduled_job",
             "description": (
-                "Create a timed background job that runs on a schedule. "
-                "Use a cron expression (e.g. '0 9 * * *' for 9am daily) or an ISO datetime for one-shot jobs."
+                "Create a background job that runs on a schedule. "
+                "Scheduling is handled automatically — just create the job."
             ),
             "parameters": {
                 "type": "object",
@@ -78,7 +78,7 @@ tools = [
                     },
                     "schedule": {
                         "type": "string",
-                        "description": "Cron expression (e.g. '0 9 * * *') or ISO datetime (e.g. '2025-03-01T14:00:00') for one-shot.",
+                        "description": "Schedule expression (e.g. '0 9 * * *' for daily at 9am, '0 9 * * 6' for Saturdays at 9am) or ISO datetime (e.g. '2025-03-01T14:00:00') for one-shot.",
                     },
                     "tags": {
                         "type": "array",
