@@ -116,6 +116,8 @@ class AgentApp(App):
             self.run_worker(self._show_resume_selector(), exclusive=True)
         elif self.initial_note:
             self.action_open_note()
+        else:
+            self._mount_input()
 
     async def _show_resume_selector(self) -> None:
         """Fetch model info and show the conversation selector."""
@@ -126,6 +128,8 @@ class AgentApp(App):
         def on_resume(conversation_id: str | None) -> None:
             if conversation_id:
                 self._resume_conversation(conversation_id)
+            else:
+                self._mount_input()
 
         self.push_screen(ConversationSelector(context_length), callback=on_resume)
 
