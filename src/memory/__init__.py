@@ -16,6 +16,7 @@ import yaml
 _BASE_DIR = Path(os.environ.get("AGENT_MEMORY_DIR", Path.home() / ".agent-memories"))
 _HIGH_DIR = _BASE_DIR / "high"
 _LOW_DIR = _BASE_DIR / "low"
+_JOBS_DIR = _BASE_DIR / "jobs"
 _TAGS_FILE = _BASE_DIR / "tags.yaml"
 
 
@@ -28,6 +29,7 @@ def ensure_dirs() -> None:
     """Create the memory directory tree and tags file if missing."""
     _HIGH_DIR.mkdir(parents=True, exist_ok=True)
     _LOW_DIR.mkdir(parents=True, exist_ok=True)
+    _JOBS_DIR.mkdir(parents=True, exist_ok=True)
     if not _TAGS_FILE.exists():
         _TAGS_FILE.write_text(yaml.dump([]))
 
@@ -122,8 +124,8 @@ def list_conversations(limit: int = 0, offset: int = 0) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def _write_memory_file(meta: dict, content: str) -> dict:
-    """Write a high-level memory .md file with YAML frontmatter.
+def _write_memory_file(meta: dict, content: str, *, directory: Path = _HIGH_DIR) -> dict:
+    """Write a memory .md file with YAML frontmatter.
 
     ``meta`` must contain at least ``id`` and ``tags``.
     ``created`` is set automatically if missing; ``updated`` is always refreshed.
@@ -142,20 +144,21 @@ def _write_memory_file(meta: dict, content: str) -> dict:
     frontmatter = yaml.dump(meta, default_flow_style=False, sort_keys=False).strip()
     doc = f"---\n{frontmatter}\n---\n{content}\n"
 
-    path = _HIGH_DIR / f"{meta['id']}.md"
+    path = directory / f"{meta['id']}.md"
     path.write_text(doc)
 
     _add_tags(meta.get("tags", []))
 
-    # Best-effort embedding — non-fatal on failure
-    try:
-        from memory.embeddings import compute_embedding, store_embedding
+    # Best-effort embedding — non-fatal on failure (skip for jobs)
+    if directory == _HIGH_DIR:
+        try:
+            from memory.embeddings import compute_embedding, store_embedding
 
-        vector = compute_embedding(content)
-        if vector:
-            store_embedding(meta["id"], vector)
-    except Exception:
-        pass
+            vector = compute_embedding(content)
+            if vector:
+                store_embedding(meta["id"], vector)
+        except Exception:
+            pass
 
     return meta
 
@@ -349,25 +352,38 @@ def create_job(prompt: str, schedule: str, tags: list[str] | None = None, max_it
         "enabled": True,
         "max_iterations": max_iterations,
     }
-    return _write_memory_file(meta, prompt)
+    return _write_memory_file(meta, prompt, directory=_JOBS_DIR)
 
 
 def list_jobs(include_disabled: bool = False) -> list[dict]:
-    """Return all job memories, optionally including disabled ones."""
-    jobs = [m for m in list_all_memories() if m.get("type") == "job"]
+    """Return all jobs from the jobs directory."""
+    ensure_dirs()
+    jobs = []
+    for path in sorted(_JOBS_DIR.glob("*.md")):
+        parsed = _parse_frontmatter(path.read_text())
+        if parsed:
+            jobs.append(parsed)
     if not include_disabled:
         jobs = [j for j in jobs if j.get("enabled", True)]
     return jobs
 
 
+def _parse_job_file(job_id: str) -> dict | None:
+    """Parse a job .md file into a dict with metadata + content."""
+    path = _JOBS_DIR / f"{job_id}.md"
+    if not path.exists():
+        return None
+    return _parse_frontmatter(path.read_text())
+
+
 def _update_job(job_id: str, **overrides) -> dict:
     """Read an existing job and re-write it with field overrides."""
-    existing = _parse_memory_file(job_id)
+    existing = _parse_job_file(job_id)
     if existing is None:
         raise FileNotFoundError(f"Job '{job_id}' not found")
     content = existing.pop("content", "")
     existing.update(overrides)
-    return _write_memory_file(existing, content)
+    return _write_memory_file(existing, content, directory=_JOBS_DIR)
 
 
 def update_job_run(job_id: str) -> dict:

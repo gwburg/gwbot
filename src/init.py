@@ -86,11 +86,31 @@ def run_init() -> None:
     _write_env(env)
     print(f"\n  Saved .env to {_ENV_PATH}")
 
-    # 4. Nightly memory review cron (optional)
-    install_cron = input("\nInstall nightly memory review cron job? [y/N]: ").strip().lower()
-    if install_cron == "y":
+    # 4. Scheduler cron + nightly review job (optional)
+    do_cron = input("\nInstall scheduler cron job (checks for due jobs every 15 min)? [y/N]: ").strip().lower()
+    if do_cron == "y":
         from scheduler import install_cron as _install_cron
-        result = _install_cron(schedule="0 3 * * *")
+        result = _install_cron()
         print(f"  {result}")
+
+        do_review = input("Create nightly memory review job (runs at 3 AM)? [y/N]: ").strip().lower()
+        if do_review == "y":
+            from memory import create_job
+            _REVIEW_PROMPT = (
+                "Review all stored memories for quality and relevance.\n\n"
+                "1. Use search_memories (empty query) to list everything.\n"
+                "2. Use read_memory on any that look potentially outdated, contradictory, or redundant.\n"
+                "3. Rules:\n"
+                "   - Only act if there is a clear, tangible benefit. Otherwise do nothing.\n"
+                "   - You may update or delete memories that are outdated, contradictory, or redundant.\n"
+                "   - You may create todos or reminders if cross-referencing reveals "
+                "a genuinely useful action item or deadline the user would benefit from.\n"
+                "   - Do NOT summarize or restate what is already stored.\n"
+                "   - Do NOT create entries just for the sake of creating them.\n"
+                "   - Be conservative — the bar for action should be high.\n"
+                "4. If everything looks fine, simply respond that no changes are needed."
+            )
+            create_job(prompt=_REVIEW_PROMPT, schedule="0 3 * * *", tags=["review", "maintenance"])
+            print("  Created nightly review job.")
 
     print("\n── Setup complete! ──\n")

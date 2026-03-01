@@ -17,7 +17,7 @@ uv run src/app.py --resume
 # Open with notes pane
 uv run src/app.py --note
 
-# Run the scheduler (processes due jobs + daily review)
+# Run the scheduler (processes due jobs)
 uv run -m scheduler
 
 # Install/uninstall the cron entry (runs scheduler every 15 min)
@@ -94,10 +94,10 @@ Two-tier persistent memory stored under `~/.agent-memories/`:
 ### Scheduler
 
 **`src/scheduler.py`** — Headless job runner:
-- Entry point: `python -m scheduler`. Processes all due jobs + daily memory review.
+- Entry point: `python -m scheduler`. Processes all due jobs.
+- Jobs are stored as `.md` files in `~/.agent-memories/jobs/` (separate from memories in `high/`).
 - Supports cron expressions (`0 9 * * *`) and ISO datetimes (one-shot).
 - PID-based lock file to prevent concurrent runs.
-- Daily review agent checks for contradictions and outdated memories.
 - CLI flags: `--install-cron`, `--uninstall-cron`, `--show-cron`.
 
 ### Tools

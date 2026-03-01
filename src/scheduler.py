@@ -1,9 +1,8 @@
 """Headless scheduler — entry point for cron.
 
 Usage:
-    python -m scheduler            # check all due jobs + daily review
+    python -m scheduler            # check all due jobs
     python -m scheduler --run ID   # run a specific job
-    python -m scheduler --review   # force daily review
 """
 
 import argparse
@@ -20,22 +19,18 @@ from dotenv import load_dotenv
 import models
 from memory import (
     _BASE_DIR,
-    list_all_memories,
     list_jobs,
     toggle_job,
     update_job_run,
-    _parse_memory_file,
+    _parse_job_file,
 )
 
 load_dotenv()
 
 _LOCK_FILE = _BASE_DIR / ".scheduler.lock"
 _LOG_FILE = _BASE_DIR / ".scheduler.log"
-_LAST_REVIEW_FILE = _BASE_DIR / ".last_review"
 
-_REVIEW_INTERVAL_HOURS = 24
-_REVIEW_MODEL = models.SONNET
-_REVIEW_MAX_ITERATIONS = 5
+_JOB_MODEL = models.SONNET
 
 logging.basicConfig(
     filename=str(_LOG_FILE),
@@ -130,7 +125,8 @@ async def run_job(client, job: dict) -> None:
     log.info("Running job %s: %.80s", job_id, prompt)
 
     tool_names = ["bash", "text_editor", "search_memories", "read_memory",
-                  "create_memory", "update_memory"]
+                  "create_memory", "update_memory", "delete_memory",
+                  "create_todo", "create_reminder", "complete_task"]
     job_tools, _ = get_tools(tool_names)
 
     messages = [
@@ -144,7 +140,7 @@ async def run_job(client, job: dict) -> None:
 
     await agent_loop(
         client,
-        _REVIEW_MODEL,
+        _JOB_MODEL,
         messages,
         job_tools,
         max_iterations=max_iter,
@@ -158,78 +154,6 @@ async def run_job(client, job: dict) -> None:
         toggle_job(job_id, enabled=False)
 
     log.info("Completed job %s", job_id)
-
-
-# ---------------------------------------------------------------------------
-# Daily review
-# ---------------------------------------------------------------------------
-
-
-def _review_is_due() -> bool:
-    """Check if 24h+ have passed since the last daily review."""
-    if not _LAST_REVIEW_FILE.exists():
-        return True
-    try:
-        last = datetime.fromisoformat(_LAST_REVIEW_FILE.read_text().strip())
-        elapsed = (datetime.now(timezone.utc) - last).total_seconds()
-        return elapsed >= _REVIEW_INTERVAL_HOURS * 3600
-    except (ValueError, OSError):
-        return True
-
-
-async def run_daily_review(client) -> None:
-    """Run the daily memory review."""
-    from agent import agent_loop
-    from memory.background import _format_existing_memories
-    from tools import get_tools
-
-    log.info("Starting daily memory review")
-
-    memories = list_all_memories()
-    if not memories:
-        log.info("No memories to review")
-        _LAST_REVIEW_FILE.write_text(datetime.now(timezone.utc).isoformat())
-        return
-
-    existing_text = _format_existing_memories(memories)
-
-    tool_names = ["search_memories", "read_memory", "create_memory",
-                  "update_memory", "delete_memory", "create_todo",
-                  "create_reminder", "complete_task"]
-    try:
-        review_tools, _ = get_tools(tool_names)
-    except ValueError:
-        review_tools = []
-
-    messages = [
-        {"role": "system", "content": (
-            "You are a background memory review agent. You have been given all stored memories.\n\n"
-            "## Rules\n"
-            "- **Only act if there is a clear, tangible benefit.** Otherwise do nothing.\n"
-            "- You may create memories, todos, or reminders if cross-referencing reveals "
-            "a genuinely useful action item or deadline the user would benefit from.\n"
-            "- You may update or delete memories that are outdated, contradictory, or redundant.\n"
-            "- Do NOT summarize or restate what is already stored.\n"
-            "- Do NOT create entries just for the sake of creating them.\n"
-            "- If everything looks fine, simply respond that no changes are needed.\n"
-            "- Be conservative — the bar for action should be high.\n"
-        )},
-        {"role": "user", "content": (
-            f"Here are all current memories. Review them and take action only if clearly beneficial.\n\n"
-            f"{existing_text}"
-        )},
-    ]
-
-    await agent_loop(
-        client,
-        _REVIEW_MODEL,
-        messages,
-        review_tools,
-        max_iterations=_REVIEW_MAX_ITERATIONS,
-    )
-
-    _LAST_REVIEW_FILE.write_text(datetime.now(timezone.utc).isoformat())
-    log.info("Daily review completed")
 
 
 # ---------------------------------------------------------------------------
@@ -319,24 +243,14 @@ async def main(args: argparse.Namespace) -> None:
 
     if args.run:
         # Run a specific job
-        job = _parse_memory_file(args.run)
-        if not job or job.get("type") != "job":
+        job = _parse_job_file(args.run)
+        if not job:
             log.error("Job %s not found", args.run)
             return
         await run_job(client, job)
         return
 
-    if args.review:
-        await run_daily_review(client)
-        return
-
-    # Default: check daily review + all due jobs
-    if _review_is_due():
-        try:
-            await run_daily_review(client)
-        except Exception:
-            log.exception("Daily review failed")
-
+    # Default: check all due jobs
     jobs = list_jobs()
     for job in jobs:
         if is_job_due(job):
@@ -349,7 +263,6 @@ async def main(args: argparse.Namespace) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Agent scheduler — headless runner for cron")
     parser.add_argument("--run", metavar="ID", help="Run a specific job by ID")
-    parser.add_argument("--review", action="store_true", help="Force daily memory review")
     parser.add_argument("--install-cron", action="store_true", help="Install crontab entry (every 15 min)")
     parser.add_argument("--uninstall-cron", action="store_true", help="Remove crontab entry")
     parser.add_argument("--show-cron", action="store_true", help="Show agent-scheduler crontab entries")
