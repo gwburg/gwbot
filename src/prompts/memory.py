@@ -1,6 +1,6 @@
 """Memory-related system prompt instructions."""
 
-from datetime import date
+from datetime import datetime
 
 from memory import get_tags, list_all_knowledge, list_all_tasks
 
@@ -29,7 +29,7 @@ def build_memory_prompt() -> str:
         "- Use `create_task` for action items. Use markdown checkboxes for multiple items:\n"
         "  `- [ ] Buy milk\\n- [ ] Call dentist`\n"
         "- Set `owner` to `user` (default) for things the user needs to do, or `agent` for your own tasks.\n"
-        "- Set `due` for deadline-sensitive items (YYYY-MM-DD format).\n"
+        "- Set `due` for deadline-sensitive items (YYYY-MM-DD or YYYY-MM-DDTHH:MM).\n"
         "- To complete one item from a list: `complete_task(task_id, item='...')` — marks it [x].\n"
         "- To complete/archive an entire task: `complete_task(task_id)` — moves it to archive.\n"
         "- You can add completion notes when archiving: `complete_task(task_id, notes='...')`.\n"
@@ -60,24 +60,24 @@ def build_memory_prompt() -> str:
     # Inject all tasks
     tasks = list_all_tasks()
     if tasks:
-        today = date.today().isoformat()
+        now = datetime.now().isoformat()
         user_tasks = [t for t in tasks if t.get("owner", "user") == "user"]
         agent_tasks = [t for t in tasks if t.get("owner") == "agent"]
 
         if user_tasks:
             prompt += "\n\n## User Tasks (remind the user)\n"
             for t in user_tasks:
-                prompt += _format_task(t, today)
+                prompt += _format_task(t, now)
 
         if agent_tasks:
             prompt += "\n\n## Agent Tasks (your responsibilities — invisible to the user unless asked)\n"
             for t in agent_tasks:
-                prompt += _format_task(t, today)
+                prompt += _format_task(t, now)
 
     return prompt
 
 
-def _format_task(t: dict, today: str) -> str:
+def _format_task(t: dict, now: str) -> str:
     content = t.get("content", "")
     tid = t.get("id", "")
     due = t.get("due")
@@ -86,7 +86,9 @@ def _format_task(t: dict, today: str) -> str:
     overdue = ""
     if due:
         due_str = f" (due {due})"
-        if due < today:
+        # Compare date-only against date prefix, datetime against full ISO
+        compare = now[:10] if "T" not in due else now
+        if due < compare:
             overdue = " **OVERDUE**"
 
     lines = content.splitlines()

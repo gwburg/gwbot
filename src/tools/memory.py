@@ -325,7 +325,7 @@ tools = [
                     },
                     "due": {
                         "type": "string",
-                        "description": "Optional due date in YYYY-MM-DD format (e.g. '2026-03-15')",
+                        "description": "Optional due date as YYYY-MM-DD or datetime as YYYY-MM-DDTHH:MM (e.g. '2026-03-15' or '2026-03-15T21:00')",
                     },
                 },
                 "required": ["content", "tags"],
@@ -354,7 +354,7 @@ tools = [
                     },
                     "due": {
                         "type": "string",
-                        "description": "New due date in YYYY-MM-DD format",
+                        "description": "New due date as YYYY-MM-DD or YYYY-MM-DDTHH:MM",
                     },
                 },
                 "required": ["task_id"],

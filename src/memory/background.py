@@ -104,7 +104,7 @@ Each element in the array is an operation object:
   "summary": "...",          // the content to save
   "tags": ["tag1"],          // descriptive tags; reuse existing ones when possible
   "owner": null,             // "user" or "agent" — for task only
-  "due": null,               // YYYY-MM-DD — optional deadline for task
+  "due": null,               // YYYY-MM-DD or YYYY-MM-DDTHH:MM — optional deadline for task
   "duplicate_of": null,      // ID of existing knowledge to update instead of creating
   "updated_content": null    // merged content when updating a duplicate
 }
