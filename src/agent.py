@@ -168,7 +168,8 @@ async def agent_loop(client, model, messages, tools, max_iterations=50, on_event
         content, tool_calls, usage = await call_llm(client, model, messages, tools, on_event=on_event)
 
         # Build message dict for history
-        llm_msg = {"role": "assistant", "content": content}
+        ts = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
+        llm_msg = {"role": "assistant", "content": f"{ts}\n{content}" if content else content}
         if tool_calls:
             llm_msg["tool_calls"] = tool_calls
         messages.append(llm_msg)
