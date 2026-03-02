@@ -14,7 +14,7 @@ from textual.containers import Horizontal, VerticalScroll
 from textual.css.query import NoMatches
 from textual.message import Message
 from textual.widgets import Footer, Header, Static
-from tools import CATEGORY_TAGS, categories as tool_categories, tools
+from tools import categories as tool_categories, tools
 
 from models import MODEL_MAP
 from memory import load_conversation, new_conversation_id
@@ -470,7 +470,7 @@ def main():
         run_init()
         load_dotenv(override=True)
 
-    system_prompt = build_system_prompt(args.persona, tool_categories, CATEGORY_TAGS)
+    system_prompt = build_system_prompt(args.persona, tool_categories)
 
     app = AgentApp(
         model=args.model,

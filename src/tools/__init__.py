@@ -20,14 +20,8 @@ tools = [t for ts, _, _, _ in _modules for t in ts]
 categories = [cat for _, _, cat, _ in _modules]
 
 TOOL_MAPPING = {}
-TOOL_TO_TAG: dict[str, str] = {}
-CATEGORY_TAGS: list[str] = []
-
-for _, mapping, _, tag in _modules:
+for _, mapping, _, _ in _modules:
     TOOL_MAPPING.update(mapping)
-    CATEGORY_TAGS.append(tag)
-    for tool_name in mapping:
-        TOOL_TO_TAG[tool_name] = tag
 
 # Index schemas by name for fast lookup
 _schemas: dict[str, dict] = {t["function"]["name"]: t for t in tools}

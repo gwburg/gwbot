@@ -41,11 +41,10 @@ def run_init() -> None:
     # 1. Name (optional)
     name = input("Your name (optional, press Enter to skip): ").strip()
     if name:
-        from memory import create_memory
-        create_memory(
+        from memory import create_knowledge
+        create_knowledge(
             content=f"The user's name is {name}.",
             tags=["user", "identity"],
-            knowledge_tag="always",
         )
         print(f"  Saved name: {name}")
 
@@ -97,23 +96,23 @@ def run_init() -> None:
         if do_review == "y":
             from memory import create_job
             _REVIEW_PROMPT = (
-                "Review all stored memories for quality, relevance and hidden insights\n\n"
-                "1. Use search_memories (empty query) to list everything.\n"
-                "2. Use read_memory on any that look either outdated, contradictory, "
-                "or redundant OR of interest relative to other memories or jobs\n"
+                "Review all stored knowledge and tasks for quality, relevance and hidden insights\n\n"
+                "1. Use search_knowledge (empty query) to list everything, and list_tasks.\n"
+                "2. Use read_knowledge / read_task on any that look outdated, contradictory, "
+                "or redundant OR of interest relative to other entries or jobs\n"
                 "3. Rules:\n"
                 "   - Only act if there is a clear, tangible benefit. Otherwise do nothing.\n"
-                "   - You may update or delete memories that are outdated, contradictory, or redundant.\n"
-                "   - You may create new memories, todos, reminders, or jobs if cross-referencing reveals "
+                "   - You may update or delete knowledge that is outdated, contradictory, or redundant.\n"
+                "   - Archive knowledge that is no longer relevant.\n"
+                "   - You may create new knowledge or tasks if cross-referencing reveals "
                 "a genuinely useful action item or deadline the user would benefit from.\n"
                 "   - Do NOT summarize or restate what is already stored.\n"
                 "   - Do NOT create entries just for the sake of creating them.\n"
                 "   - Be conservative — the bar for action should be high.\n"
                 "4. If everything looks fine, simply respond that no changes are needed.\n"
-                "5. If you have taken any actions, log those in a memory tagged 'update' "
-                "with knowledge_tag 'always' outlining what you've done and it should be "
-                "reported to the user in the next conversation. It should also note that "
-                "the memory should be deleted after being reported to the user."
+                "5. If you have taken any actions, log those in a knowledge entry tagged 'update' "
+                "outlining what you've done — it should be reported to the user in the next conversation "
+                "and then archived after being reported."
             )
             create_job(prompt=_REVIEW_PROMPT, schedule="0 3 * * *", tags=["review", "maintenance"])
             print("  Created nightly review job.")

@@ -107,10 +107,10 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 
 
 def backfill_embeddings() -> int:
-    """Compute embeddings for any memories missing from the DB. Returns count."""
-    from memory import list_all_memories
+    """Compute embeddings for any entries missing from the DB. Returns count."""
+    from memory import list_all_knowledge, list_all_tasks
 
-    memories = list_all_memories()
+    memories = list_all_knowledge() + list_all_tasks()
     stored = get_all_embeddings()
     count = 0
     for mem in memories:

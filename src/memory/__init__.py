@@ -1,8 +1,11 @@
-"""Storage layer for the two-tier memory system.
+"""Storage layer for the memory system.
 
-Low-level:  full conversation logs as JSONL  (~/.agent-memories/low/)
-High-level: tagged summaries as Markdown     (~/.agent-memories/high/)
-Tags:       single YAML file                 (~/.agent-memories/tags.yaml)
+Logs:      full conversation logs as JSONL       (~/.agent-memories/logs/)
+Knowledge: tagged summaries as Markdown           (~/.agent-memories/knowledge/)
+Tasks:     task lists as Markdown                 (~/.agent-memories/tasks/)
+Archive:   completed tasks / retired knowledge    (~/.agent-memories/archive/)
+Jobs:      scheduled job definitions              (~/.agent-memories/jobs/)
+Tags:      single YAML file                       (~/.agent-memories/tags.yaml)
 """
 
 import json
@@ -14,8 +17,10 @@ from uuid import uuid4
 import yaml
 
 _BASE_DIR = Path(os.environ.get("AGENT_MEMORY_DIR", Path.home() / ".agent-memories"))
-_HIGH_DIR = _BASE_DIR / "high"
-_LOW_DIR = _BASE_DIR / "low"
+_KNOWLEDGE_DIR = _BASE_DIR / "knowledge"
+_TASKS_DIR = _BASE_DIR / "tasks"
+_ARCHIVE_DIR = _BASE_DIR / "archive"
+_LOGS_DIR = _BASE_DIR / "logs"
 _JOBS_DIR = _BASE_DIR / "jobs"
 _TAGS_FILE = _BASE_DIR / "tags.yaml"
 
@@ -27,8 +32,10 @@ _TAGS_FILE = _BASE_DIR / "tags.yaml"
 
 def ensure_dirs() -> None:
     """Create the memory directory tree and tags file if missing."""
-    _HIGH_DIR.mkdir(parents=True, exist_ok=True)
-    _LOW_DIR.mkdir(parents=True, exist_ok=True)
+    _KNOWLEDGE_DIR.mkdir(parents=True, exist_ok=True)
+    _TASKS_DIR.mkdir(parents=True, exist_ok=True)
+    _ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+    _LOGS_DIR.mkdir(parents=True, exist_ok=True)
     _JOBS_DIR.mkdir(parents=True, exist_ok=True)
     if not _TAGS_FILE.exists():
         _TAGS_FILE.write_text(yaml.dump([]))
@@ -44,14 +51,14 @@ def new_conversation_id() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Low-level: conversation logs
+# Conversation logs
 # ---------------------------------------------------------------------------
 
 
 def save_conversation(conversation_id: str, messages: list[dict]) -> None:
     """Write non-system messages as JSONL."""
     ensure_dirs()
-    path = _LOW_DIR / f"{conversation_id}.jsonl"
+    path = _LOGS_DIR / f"{conversation_id}.jsonl"
     with open(path, "w") as f:
         for msg in messages:
             if msg.get("role") == "system":
@@ -61,7 +68,7 @@ def save_conversation(conversation_id: str, messages: list[dict]) -> None:
 
 def read_conversation(conversation_id: str) -> str:
     """Read a conversation log and return its contents."""
-    path = _LOW_DIR / f"{conversation_id}.jsonl"
+    path = _LOGS_DIR / f"{conversation_id}.jsonl"
     if not path.exists():
         return f"Error: conversation '{conversation_id}' not found"
     return path.read_text()
@@ -69,7 +76,7 @@ def read_conversation(conversation_id: str) -> str:
 
 def load_conversation(conversation_id: str) -> list[dict]:
     """Load a conversation log as a list of message dicts."""
-    path = _LOW_DIR / f"{conversation_id}.jsonl"
+    path = _LOGS_DIR / f"{conversation_id}.jsonl"
     if not path.exists():
         raise FileNotFoundError(f"Conversation '{conversation_id}' not found")
     messages = []
@@ -91,7 +98,7 @@ def list_conversations(limit: int = 0, offset: int = 0) -> list[dict]:
     """
     ensure_dirs()
     results = []
-    for path in _LOW_DIR.glob("*.jsonl"):
+    for path in _LOGS_DIR.glob("*.jsonl"):
         stat = path.stat()
         mtime = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
         total_chars = 0
@@ -120,140 +127,8 @@ def list_conversations(limit: int = 0, offset: int = 0) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# High-level: tagged summaries
+# Shared helpers
 # ---------------------------------------------------------------------------
-
-
-def _write_memory_file(meta: dict, content: str, *, directory: Path = _HIGH_DIR) -> dict:
-    """Write a memory .md file with YAML frontmatter.
-
-    ``meta`` must contain at least ``id`` and ``tags``.
-    ``created`` is set automatically if missing; ``updated`` is always refreshed.
-    The ``type`` key is omitted from frontmatter when it equals ``"memory"``
-    (the default) to keep files clean.
-    """
-    ensure_dirs()
-    now = datetime.now(timezone.utc).isoformat()
-    meta.setdefault("created", now)
-    meta["updated"] = now
-
-    # Strip the default type to keep frontmatter minimal
-    if meta.get("type") == "memory":
-        meta.pop("type")
-
-    frontmatter = yaml.dump(meta, default_flow_style=False, sort_keys=False).strip()
-    doc = f"---\n{frontmatter}\n---\n{content}\n"
-
-    path = directory / f"{meta['id']}.md"
-    path.write_text(doc)
-
-    _add_tags(meta.get("tags", []))
-
-    # Best-effort embedding — non-fatal on failure (skip for jobs)
-    if directory == _HIGH_DIR:
-        try:
-            from memory.embeddings import compute_embedding, store_embedding
-
-            vector = compute_embedding(content)
-            if vector:
-                store_embedding(meta["id"], vector)
-        except Exception:
-            pass
-
-    return meta
-
-
-def create_memory(content: str, tags: list[str], conversation_id: str | None = None, knowledge_tag: str | None = None, type: str = "memory", deadline: str | None = None, owner: str | None = None, recurring: bool = False) -> dict:
-    """Create a new high-level memory and return its metadata."""
-    meta: dict = {"id": uuid4().hex[:12], "tags": tags, "type": type}
-    if conversation_id:
-        meta["conversation_id"] = conversation_id
-    if knowledge_tag:
-        meta["knowledge_tag"] = knowledge_tag
-    if deadline:
-        meta["deadline"] = deadline
-    if owner:
-        meta["owner"] = owner
-    if recurring:
-        meta["recurring"] = True
-    return _write_memory_file(meta, content)
-
-
-def complete_recurring_task(memory_id: str) -> dict:
-    """Mark a recurring reminder as done for today instead of deleting it."""
-    existing = _parse_memory_file(memory_id)
-    if existing is None:
-        raise FileNotFoundError(f"Memory '{memory_id}' not found")
-    content = existing.pop("content", "")
-    existing["last_completed"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    return _write_memory_file(existing, content)
-
-
-def update_memory(memory_id: str, content: str | None = None, tags: list[str] | None = None, knowledge_tag: str | None = None, deadline: str | None = None) -> dict:
-    """Update an existing memory's content and/or tags."""
-    existing = _parse_memory_file(memory_id)
-    if existing is None:
-        raise FileNotFoundError(f"Memory '{memory_id}' not found")
-
-    new_content = content if content is not None else existing.pop("content", "")
-    existing.pop("content", None)
-    if tags is not None:
-        existing["tags"] = tags
-    if knowledge_tag is not None:
-        existing["knowledge_tag"] = knowledge_tag
-    if deadline is not None:
-        existing["deadline"] = deadline
-    return _write_memory_file(existing, new_content)
-
-
-def delete_memory(memory_id: str) -> None:
-    """Delete a memory file and its embedding."""
-    path = _HIGH_DIR / f"{memory_id}.md"
-    if not path.exists():
-        raise FileNotFoundError(f"Memory '{memory_id}' not found")
-    path.unlink()
-    try:
-        from memory.embeddings import delete_embedding
-        delete_embedding(memory_id)
-    except Exception:
-        pass
-
-
-def list_tasks() -> list[dict]:
-    """Return all todo/reminder memories, reminders sorted by deadline first.
-
-    Reminders completed today (last_completed == today) are excluded.
-    """
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    tasks = [
-        m for m in list_all_memories()
-        if m.get("type") in ("todo", "reminder")
-        and m.get("last_completed") != today
-    ]
-    # Reminders with deadline first (sorted by deadline), then todos
-    reminders = sorted(
-        [t for t in tasks if t.get("type") == "reminder"],
-        key=lambda t: t.get("deadline") or "",
-    )
-    todos = [t for t in tasks if t.get("type") == "todo"]
-    return reminders + todos
-
-
-def read_memory(memory_id: str) -> str:
-    """Read the full .md file for a memory."""
-    path = _HIGH_DIR / f"{memory_id}.md"
-    if not path.exists():
-        return f"Error: memory '{memory_id}' not found"
-    return path.read_text()
-
-
-def _parse_memory_file(memory_id: str) -> dict | None:
-    """Parse a memory .md file into a dict with metadata + content."""
-    path = _HIGH_DIR / f"{memory_id}.md"
-    if not path.exists():
-        return None
-    text = path.read_text()
-    return _parse_frontmatter(text)
 
 
 def _parse_frontmatter(text: str) -> dict:
@@ -268,16 +143,45 @@ def _parse_frontmatter(text: str) -> dict:
     return meta
 
 
-def list_all_memories() -> list[dict]:
-    """Parse all high-level memories and return their metadata + content."""
+def _parse_file(file_id: str, directory: Path) -> dict | None:
+    """Parse a .md file into a dict with metadata + content."""
+    path = directory / f"{file_id}.md"
+    if not path.exists():
+        return None
+    return _parse_frontmatter(path.read_text())
+
+
+def _write_file(meta: dict, content: str, *, directory: Path = _KNOWLEDGE_DIR) -> dict:
+    """Write a .md file with YAML frontmatter.
+
+    ``meta`` must contain at least ``id`` and ``tags``.
+    ``created`` is set automatically if missing; ``updated`` is always refreshed.
+    """
     ensure_dirs()
-    memories = []
-    for path in sorted(_HIGH_DIR.glob("*.md")):
-        text = path.read_text()
-        parsed = _parse_frontmatter(text)
-        if parsed:
-            memories.append(parsed)
-    return memories
+    now = datetime.now(timezone.utc).isoformat()
+    meta.setdefault("created", now)
+    meta["updated"] = now
+
+    frontmatter = yaml.dump(meta, default_flow_style=False, sort_keys=False).strip()
+    doc = f"---\n{frontmatter}\n---\n{content}\n"
+
+    path = directory / f"{meta['id']}.md"
+    path.write_text(doc)
+
+    _add_tags(meta.get("tags", []))
+
+    # Best-effort embedding — non-fatal on failure (skip for jobs)
+    if directory != _JOBS_DIR:
+        try:
+            from memory.embeddings import compute_embedding, store_embedding
+
+            vector = compute_embedding(content)
+            if vector:
+                store_embedding(meta["id"], vector)
+        except Exception:
+            pass
+
+    return meta
 
 
 def _build_result(mem: dict, score: float | None = None) -> dict:
@@ -290,10 +194,8 @@ def _build_result(mem: dict, score: float | None = None) -> dict:
     return result
 
 
-def search_memories(query: str | None = None, tags: list[str] | None = None) -> list[dict]:
+def _hybrid_search(candidates: list[dict], query: str | None = None, tags: list[str] | None = None) -> list[dict]:
     """Hybrid search: tag filtering + semantic similarity + keyword bonus."""
-    candidates = list_all_memories()
-
     # Tag filter (cheap, do first)
     if tags:
         candidates = [m for m in candidates if any(t in m.get("tags", []) for t in tags)]
@@ -337,6 +239,197 @@ def search_memories(query: str | None = None, tags: list[str] | None = None) -> 
     return [_build_result(m, score=s) for s, m in scored]
 
 
+def _list_dir(directory: Path) -> list[dict]:
+    """Parse all .md files in a directory."""
+    ensure_dirs()
+    items = []
+    for path in sorted(directory.glob("*.md")):
+        parsed = _parse_frontmatter(path.read_text())
+        if parsed:
+            items.append(parsed)
+    return items
+
+
+def _delete_file(file_id: str, directory: Path) -> None:
+    """Delete a file and its embedding."""
+    path = directory / f"{file_id}.md"
+    if not path.exists():
+        raise FileNotFoundError(f"'{file_id}' not found in {directory.name}/")
+    path.unlink()
+    try:
+        from memory.embeddings import delete_embedding
+        delete_embedding(file_id)
+    except Exception:
+        pass
+
+
+def _move_file(file_id: str, src_dir: Path, dest_dir: Path, extra_content: str | None = None) -> dict:
+    """Move a file between directories, optionally appending content."""
+    existing = _parse_file(file_id, src_dir)
+    if existing is None:
+        raise FileNotFoundError(f"'{file_id}' not found in {src_dir.name}/")
+
+    content = existing.pop("content", "")
+    if extra_content:
+        content = content.rstrip() + "\n\n" + extra_content
+
+    result = _write_file(existing, content, directory=dest_dir)
+
+    # Remove from source
+    src_path = src_dir / f"{file_id}.md"
+    src_path.unlink()
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Knowledge CRUD
+# ---------------------------------------------------------------------------
+
+
+def create_knowledge(content: str, tags: list[str], conversation_id: str | None = None) -> dict:
+    """Create a new knowledge entry and return its metadata."""
+    meta: dict = {"id": uuid4().hex[:12], "tags": tags}
+    if conversation_id:
+        meta["conversation_id"] = conversation_id
+    return _write_file(meta, content, directory=_KNOWLEDGE_DIR)
+
+
+def update_knowledge(knowledge_id: str, content: str | None = None, tags: list[str] | None = None) -> dict:
+    """Update an existing knowledge entry's content and/or tags."""
+    existing = _parse_file(knowledge_id, _KNOWLEDGE_DIR)
+    if existing is None:
+        raise FileNotFoundError(f"Knowledge '{knowledge_id}' not found")
+
+    new_content = content if content is not None else existing.pop("content", "")
+    existing.pop("content", None)
+    if tags is not None:
+        existing["tags"] = tags
+    return _write_file(existing, new_content, directory=_KNOWLEDGE_DIR)
+
+
+def delete_knowledge(knowledge_id: str) -> None:
+    """Delete a knowledge entry."""
+    _delete_file(knowledge_id, _KNOWLEDGE_DIR)
+
+
+def read_knowledge(knowledge_id: str) -> str:
+    """Read the full .md file for a knowledge entry."""
+    path = _KNOWLEDGE_DIR / f"{knowledge_id}.md"
+    if not path.exists():
+        return f"Error: knowledge '{knowledge_id}' not found"
+    return path.read_text()
+
+
+def list_all_knowledge() -> list[dict]:
+    """Parse all knowledge entries."""
+    return _list_dir(_KNOWLEDGE_DIR)
+
+
+def search_knowledge(query: str | None = None, tags: list[str] | None = None) -> list[dict]:
+    """Hybrid search over knowledge entries."""
+    return _hybrid_search(list_all_knowledge(), query, tags)
+
+
+def archive_knowledge(knowledge_id: str) -> dict:
+    """Move a knowledge entry to the archive."""
+    return _move_file(knowledge_id, _KNOWLEDGE_DIR, _ARCHIVE_DIR)
+
+
+# ---------------------------------------------------------------------------
+# Tasks CRUD
+# ---------------------------------------------------------------------------
+
+
+def create_task(content: str, tags: list[str], owner: str = "user", due: str | None = None, job: str | None = None) -> dict:
+    """Create a new task and return its metadata."""
+    meta: dict = {"id": uuid4().hex[:12], "tags": tags, "owner": owner}
+    if due:
+        meta["due"] = due
+    if job:
+        meta["job"] = job
+    return _write_file(meta, content, directory=_TASKS_DIR)
+
+
+def update_task(task_id: str, content: str | None = None, tags: list[str] | None = None, due: str | None = None) -> dict:
+    """Update an existing task's content, tags, and/or due date."""
+    existing = _parse_file(task_id, _TASKS_DIR)
+    if existing is None:
+        raise FileNotFoundError(f"Task '{task_id}' not found")
+
+    new_content = content if content is not None else existing.pop("content", "")
+    existing.pop("content", None)
+    if tags is not None:
+        existing["tags"] = tags
+    if due is not None:
+        existing["due"] = due
+    return _write_file(existing, new_content, directory=_TASKS_DIR)
+
+
+def delete_task(task_id: str) -> None:
+    """Delete a task."""
+    _delete_file(task_id, _TASKS_DIR)
+
+
+def read_task(task_id: str) -> str:
+    """Read the full .md file for a task."""
+    path = _TASKS_DIR / f"{task_id}.md"
+    if not path.exists():
+        return f"Error: task '{task_id}' not found"
+    return path.read_text()
+
+
+def list_all_tasks() -> list[dict]:
+    """Parse all task files."""
+    return _list_dir(_TASKS_DIR)
+
+
+def complete_task_item(task_id: str, item: str) -> dict:
+    """Mark a checklist item as [x] in a task file.
+
+    Returns the updated metadata.
+    """
+    existing = _parse_file(task_id, _TASKS_DIR)
+    if existing is None:
+        raise FileNotFoundError(f"Task '{task_id}' not found")
+
+    content = existing.pop("content", "")
+    lines = content.splitlines()
+    item_lower = item.lower()
+    matched = next(
+        (i for i, l in enumerate(lines)
+         if l.strip().startswith("- [ ]") and item_lower in l.lower()),
+        None,
+    )
+    if matched is None:
+        raise ValueError(f"Item '{item}' not found in task '{task_id}'")
+
+    # Replace - [ ] with - [x]
+    lines[matched] = lines[matched].replace("- [ ]", "- [x]", 1)
+    return _write_file(existing, "\n".join(lines), directory=_TASKS_DIR)
+
+
+def archive_task(task_id: str, notes: str | None = None) -> dict:
+    """Move a task to the archive, optionally appending completion notes."""
+    extra = f"**Completion notes:** {notes}" if notes else None
+    return _move_file(task_id, _TASKS_DIR, _ARCHIVE_DIR, extra_content=extra)
+
+
+# ---------------------------------------------------------------------------
+# Archive
+# ---------------------------------------------------------------------------
+
+
+def list_archive() -> list[dict]:
+    """Parse all archived files."""
+    return _list_dir(_ARCHIVE_DIR)
+
+
+def search_archive(query: str | None = None, tags: list[str] | None = None) -> list[dict]:
+    """Hybrid search over archived entries."""
+    return _hybrid_search(list_archive(), query, tags)
+
+
 # ---------------------------------------------------------------------------
 # Jobs
 # ---------------------------------------------------------------------------
@@ -352,7 +445,7 @@ def create_job(prompt: str, schedule: str, tags: list[str] | None = None, max_it
         "enabled": True,
         "max_iterations": max_iterations,
     }
-    return _write_memory_file(meta, prompt, directory=_JOBS_DIR)
+    return _write_file(meta, prompt, directory=_JOBS_DIR)
 
 
 def list_jobs(include_disabled: bool = False) -> list[dict]:
@@ -370,10 +463,7 @@ def list_jobs(include_disabled: bool = False) -> list[dict]:
 
 def _parse_job_file(job_id: str) -> dict | None:
     """Parse a job .md file into a dict with metadata + content."""
-    path = _JOBS_DIR / f"{job_id}.md"
-    if not path.exists():
-        return None
-    return _parse_frontmatter(path.read_text())
+    return _parse_file(job_id, _JOBS_DIR)
 
 
 def delete_job(job_id: str) -> None:
@@ -391,7 +481,7 @@ def _update_job(job_id: str, **overrides) -> dict:
         raise FileNotFoundError(f"Job '{job_id}' not found")
     content = existing.pop("content", "")
     existing.update(overrides)
-    return _write_memory_file(existing, content, directory=_JOBS_DIR)
+    return _write_file(existing, content, directory=_JOBS_DIR)
 
 
 def update_job_run(job_id: str) -> dict:
@@ -416,11 +506,6 @@ def get_tags() -> list[str]:
     return data if isinstance(data, list) else []
 
 
-def get_knowledge(tag: str) -> list[dict]:
-    """Return all memories whose knowledge_tag matches the given tag."""
-    return [m for m in list_all_memories() if m.get("knowledge_tag") == tag]
-
-
 def _add_tags(new_tags: list[str]) -> None:
     """Merge new tags into tags.yaml."""
     existing = set(get_tags())
@@ -429,9 +514,12 @@ def _add_tags(new_tags: list[str]) -> None:
 
 
 def delete_tag(tag: str) -> int:
-    """Remove a tag from tags.yaml. Returns number of memories still using it."""
+    """Remove a tag from tags.yaml. Returns number of entries still using it."""
     existing = get_tags()
     updated = [t for t in existing if t != tag]
     _TAGS_FILE.write_text(yaml.dump(updated, default_flow_style=False))
-    still_using = sum(1 for m in list_all_memories() if tag in m.get("tags", []))
+    all_items = list_all_knowledge() + list_all_tasks()
+    still_using = sum(1 for m in all_items if tag in m.get("tags", []))
     return still_using
+
+

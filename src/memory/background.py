@@ -1,4 +1,4 @@
-"""Background agent that summarizes conversations into high-level memories.
+"""Background agent that summarizes conversations into knowledge and tasks.
 
 Can be run as a standalone script for detached processing:
     python -m memory.background <conversation_file.json>
@@ -12,11 +12,13 @@ import tempfile
 
 import models
 from memory import (
-    create_memory,
+    create_knowledge,
+    create_task,
     get_tags,
-    list_all_memories,
+    list_all_knowledge,
+    list_all_tasks,
     save_conversation,
-    update_memory,
+    update_knowledge,
 )
 
 DEFAULT_MODEL = models.SONNET
@@ -39,11 +41,10 @@ def _apply_operations(operations: list[dict], conversation_id: str | None = None
     for op in operations:
         if op.get("duplicate_of") and op.get("updated_content"):
             try:
-                meta = update_memory(
+                meta = update_knowledge(
                     op["duplicate_of"],
                     content=op["updated_content"],
                     tags=op.get("tags"),
-                    knowledge_tag=op.get("knowledge_tag") or None,
                 )
                 meta["action"] = "updated"
                 results.append(meta)
@@ -51,24 +52,27 @@ def _apply_operations(operations: list[dict], conversation_id: str | None = None
             except FileNotFoundError:
                 pass  # Fall through to create
 
-        op_type = op.get("type", "memory")
-        kwargs = {
-            "content": op["summary"],
-            "tags": op.get("tags", []),
-            "type": op_type,
-        }
-        if op.get("owner"):
-            kwargs["owner"] = op["owner"]
-        if op.get("deadline"):
-            kwargs["deadline"] = op["deadline"]
-        if op.get("recurring"):
-            kwargs["recurring"] = op["recurring"]
-        if op.get("knowledge_tag"):
-            kwargs["knowledge_tag"] = op["knowledge_tag"]
-        if conversation_id and op_type == "memory":
-            kwargs["conversation_id"] = conversation_id
+        op_type = op.get("type", "knowledge")
 
-        meta = create_memory(**kwargs)
+        if op_type == "task":
+            kwargs = {
+                "content": op["summary"],
+                "tags": op.get("tags", []),
+            }
+            if op.get("owner"):
+                kwargs["owner"] = op["owner"]
+            if op.get("due"):
+                kwargs["due"] = op["due"]
+            meta = create_task(**kwargs)
+        else:
+            kwargs = {
+                "content": op["summary"],
+                "tags": op.get("tags", []),
+            }
+            if conversation_id:
+                kwargs["conversation_id"] = conversation_id
+            meta = create_knowledge(**kwargs)
+
         meta["action"] = "created"
         results.append(meta)
 
@@ -93,38 +97,34 @@ def _spawn(args: list[str], data: dict) -> None:
     )
 
 # Shared: operation schema and type definitions (used by both prompts).
-# Update this when new memory fields or types are added.
 _SCHEMA_FIELDS = """\
 Each element in the array is an operation object:
 {
-  "type": "memory",         // "memory" (default), "todo", or "reminder"
-  "summary": "...",         // the content to save
-  "tags": ["tag1"],         // descriptive tags; reuse existing ones when possible
-  "owner": null,            // "user" or "agent" — for todo/reminder only
-  "deadline": null,         // YYYY-MM-DD — for reminder only
-  "recurring": false,       // true = hides for today, reappears next session — for reminder only
-  "knowledge_tag": null,    // "always"|"shell"|"editor"|"memory"|"monarch" — for memory only; auto-injects content
-  "duplicate_of": null,     // ID of existing memory to update instead of creating
-  "updated_content": null   // merged content when updating a duplicate
+  "type": "knowledge",       // "knowledge" (default) or "task"
+  "summary": "...",          // the content to save
+  "tags": ["tag1"],          // descriptive tags; reuse existing ones when possible
+  "owner": null,             // "user" or "agent" — for task only
+  "due": null,               // YYYY-MM-DD — optional deadline for task
+  "duplicate_of": null,      // ID of existing knowledge to update instead of creating
+  "updated_content": null    // merged content when updating a duplicate
 }
 
 Type guide:
-- "memory": a fact, preference, decision, or instruction worth remembering long-term.
-- "todo": a list of tasks (markdown checkboxes). Items are completed one by one; list is deleted when empty. owner="user" or "agent".
-- "reminder": a time-sensitive item. Requires deadline. Use recurring=true for repeating tasks.
+- "knowledge": a fact, preference, decision, or instruction worth remembering long-term.
+- "task": action items (markdown checkboxes). Set due for deadline-sensitive items. owner="user" or "agent".
 - "job": NEVER create this type — jobs are only created via the scheduler tools.
 
 Dedup rules:
-- If content overlaps with an existing memory, set duplicate_of + updated_content to merge; don't create a duplicate.
+- If content overlaps with an existing entry, set duplicate_of + updated_content to merge; don't create a duplicate.
 - Use existing tags when possible; only invent new ones if truly needed.
 - Omit null/false fields (they are optional)."""
 
 
-def _build_note_prompt(existing_memories: str, tags: str, note: str) -> str:
+def _build_note_prompt(existing_entries: str, tags: str, note: str) -> str:
     return (
         "You are a memory manager. The user has written a note — save its contents.\n\n"
-        "## Existing memories (for dedup — do NOT create duplicates)\n"
-        f"{existing_memories}\n\n"
+        "## Existing entries (for dedup — do NOT create duplicates)\n"
+        f"{existing_entries}\n\n"
         "## Known tags\n"
         f"{tags}\n\n"
         "## Note\n"
@@ -132,55 +132,55 @@ def _build_note_prompt(existing_memories: str, tags: str, note: str) -> str:
         "## Instructions\n"
         "The user deliberately wrote this, so everything in it is worth saving.\n"
         "Infer the appropriate type from structure and language:\n"
-        "- A list of action items, tasks, or ideas → a single `todo` with all items as markdown checkboxes.\n"
+        "- A list of action items, tasks, or ideas → a single `task` with all items as markdown checkboxes.\n"
         "  Format: `- [ ] item one\\n- [ ] item two\\n- [ ] item three`.\n"
         "  Optionally prepend a short title line before the checklist.\n"
-        "  Do NOT create one todo per item — the whole list is one todo memory.\n"
-        "- Something with a deadline or 'by [date]' phrasing → `reminder`.\n"
-        "- A fact, preference, decision, or instruction → `memory`.\n"
+        "  Do NOT create one task per item — the whole list is one task.\n"
+        "- Something with a deadline or 'by [date]' phrasing → `task` with a `due` date.\n"
+        "- A fact, preference, decision, or instruction → `knowledge`.\n"
         "- Mixed notes: split into separate operations by topic and intent.\n\n"
         "Return `[]` only if the note is empty or completely nonsensical.\n\n"
-        "Respond with a JSON array of memory operations (no markdown fences).\n\n"
+        "Respond with a JSON array of operations (no markdown fences).\n\n"
         + _SCHEMA_FIELDS
     )
 
 
-def _build_summarize_prompt(existing_memories: str, tags: str, conversation: str) -> str:
+def _build_summarize_prompt(existing_entries: str, tags: str, conversation: str) -> str:
     return (
         "You are a memory manager. Given a conversation, decide whether it contains anything worth remembering long-term.\n\n"
-        "## Existing memories (for dedup — do NOT create duplicates)\n"
-        f"{existing_memories}\n\n"
+        "## Existing entries (for dedup — do NOT create duplicates)\n"
+        f"{existing_entries}\n\n"
         "## Known tags\n"
         f"{tags}\n\n"
         "## Conversation\n"
         f"{conversation}\n\n"
         "## Instructions\n"
-        "Only save meaningful, long-term information: preferences, decisions, facts, instructions, tasks, or reminders.\n"
+        "Only save meaningful, long-term information: preferences, decisions, facts, instructions, or tasks.\n"
         "Trivial exchanges (greetings, one-off questions, simple tool usage) should NOT be saved.\n"
         "If the conversation covers multiple unrelated topics, create separate operations for each.\n"
-        "If the user or agent committed to something by a deadline, create a reminder.\n"
-        "If there are open-ended tasks with no deadline, group related ones into a single `todo` list using markdown checkboxes (`- [ ] item`). Don't create a separate todo per task.\n"
+        "If the user or agent committed to something by a deadline, create a task with a due date.\n"
+        "If there are open-ended action items with no deadline, group related ones into a single `task` using markdown checkboxes (`- [ ] item`). Don't create a separate task per item.\n"
         "Return `[]` if the conversation contains nothing worth saving.\n\n"
-        "Respond with a JSON array of memory operations (no markdown fences).\n\n"
+        "Respond with a JSON array of operations (no markdown fences).\n\n"
         + _SCHEMA_FIELDS
     )
 
 
-def _format_existing_memories(memories: list[dict]) -> str:
-    if not memories:
+def _format_existing_entries(entries: list[dict]) -> str:
+    if not entries:
         return "(none)"
     lines = []
-    for m in memories:
-        content = m.get("content", "")
-        tags = ", ".join(m.get("tags", []))
-        mtype = m.get("type", "memory")
-        mid = m.get("id")
-        if mtype == "todo":
-            # Show full content so all checklist items are visible
-            lines.append(f"- [{mid}] type=todo tags=[{tags}]:\n{content}")
+    for e in entries:
+        content = e.get("content", "")
+        tags = ", ".join(e.get("tags", []))
+        eid = e.get("id")
+        owner = e.get("owner")
+        if owner:
+            # Task
+            lines.append(f"- [{eid}] task owner={owner} tags=[{tags}]:\n{content}")
         else:
             preview = content[:200] + ("..." if len(content) > 200 else "")
-            lines.append(f"- [{mid}] type={mtype} tags=[{tags}]: {preview}")
+            lines.append(f"- [{eid}] knowledge tags=[{tags}]: {preview}")
     return "\n".join(lines)
 
 
@@ -199,9 +199,9 @@ def _format_conversation(messages: list[dict]) -> str:
 
 
 async def process_conversation(client, conversation_id: str, messages: list[dict], model: str | None = None) -> list[dict]:
-    """Save conversation log and create/update high-level memories.
+    """Save conversation log and create/update knowledge and tasks.
 
-    Returns a list of memory metadata dicts (empty if nothing saved).
+    Returns a list of metadata dicts (empty if nothing saved).
     """
     # 1. Always save the full conversation log
     save_conversation(conversation_id, messages)
@@ -212,12 +212,12 @@ async def process_conversation(client, conversation_id: str, messages: list[dict
         return []
 
     # 3. Gather context for dedup
-    existing = list_all_memories()
+    existing = list_all_knowledge() + list_all_tasks()
     tags = get_tags()
 
     # 4. Build prompt and call LLM
     prompt = _build_summarize_prompt(
-        existing_memories=_format_existing_memories(existing),
+        existing_entries=_format_existing_entries(existing),
         tags=", ".join(tags) if tags else "(none)",
         conversation=_format_conversation(messages),
     )
@@ -238,15 +238,15 @@ async def process_conversation(client, conversation_id: str, messages: list[dict
 
 
 async def process_note(client, note_text: str, model: str | None = None) -> list[dict]:
-    """Process a user note into memories via LLM.
+    """Process a user note into knowledge/tasks via LLM.
 
-    Returns a list of memory metadata dicts (empty if nothing saved).
+    Returns a list of metadata dicts (empty if nothing saved).
     """
-    existing = list_all_memories()
+    existing = list_all_knowledge() + list_all_tasks()
     tags = get_tags()
 
     prompt = _build_note_prompt(
-        existing_memories=_format_existing_memories(existing),
+        existing_entries=_format_existing_entries(existing),
         tags=", ".join(tags) if tags else "(none)",
         note=note_text,
     )
@@ -267,7 +267,7 @@ async def process_note(client, note_text: str, model: str | None = None) -> list
 
 
 def spawn_note_background(note_text: str) -> None:
-    """Fire-and-forget: spawn a detached subprocess to process a note into memories."""
+    """Fire-and-forget: spawn a detached subprocess to process a note."""
     _spawn(["--note"], {"note": note_text})
 
 

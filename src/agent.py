@@ -17,8 +17,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from memory import get_knowledge
-from tools import TOOL_MAPPING, TOOL_TO_TAG
+from tools import TOOL_MAPPING
 
 load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -165,8 +164,6 @@ async def agent_loop(client, model, messages, tools, max_iterations=50, on_event
     total_prompt_tokens = 0
     total_completion_tokens = 0
 
-    injected_tags: set[str] = set()
-
     for _ in range(max_iterations):
         content, tool_calls, usage = await call_llm(client, model, messages, tools, on_event=on_event)
 
@@ -206,17 +203,6 @@ async def agent_loop(client, model, messages, tools, max_iterations=50, on_event
 
         for tc in tool_calls:
             tool_output_msg = await execute_tool(tc)
-
-            # Inject category knowledge on first use of each tag
-            tag = TOOL_TO_TAG.get(tc["function"]["name"])
-            if tag and tag not in injected_tags:
-                injected_tags.add(tag)
-                knowledge = await asyncio.to_thread(get_knowledge, tag)
-                if knowledge:
-                    prefix = f"[Knowledge for {tag} tools]\n"
-                    prefix += "\n".join(f"- {m.get('content', '')}" for m in knowledge)
-                    tool_output_msg["content"] = prefix + "\n\n" + tool_output_msg["content"]
-
             messages.append(tool_output_msg)
             _emit(on_event, ToolResultEvent(
                 name=tc["function"]["name"],

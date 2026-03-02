@@ -42,7 +42,7 @@ A Textual TUI wrapping an async agentic loop that uses the OpenAI SDK pointed at
 - On startup, the user sends the first message. The agent only proactively mentions reminders that are overdue or due within 24 hours. The scheduler is also spawned fire-and-forget to catch overdue jobs.
 - CLI: `--model` (aliases from `models.py`), `--max-iterations`, `--persona` (`default`/`casual`/`detailed`/`minimal`), `--note`, `--resume`.
 - Key bindings: `Ctrl+Q`/`Ctrl+C` quit, `Alt+M` switch model, `Alt+N` toggle notes pane, `Alt+H`/`Alt+L` focus chat/notes.
-- On quit, spawns a detached background subprocess to save conversation log and summarize into high-level memories.
+- On quit, spawns a detached background subprocess to save conversation log and summarize into knowledge/tasks.
 
 **`src/widgets.py`** — Custom Textual widgets:
 - `StatusBar`: Reactive bar showing model, tokens, cost, and context fill %.
@@ -67,22 +67,24 @@ A Textual TUI wrapping an async agentic loop that uses the OpenAI SDK pointed at
 
 **`src/prompts/system.py`** — Generates the full system prompt by composing a persona template + date/time context + tool category list + memory section. Personas: `default`, `casual`, `detailed`, `minimal`.
 
-**`src/prompts/memory.py`** — Builds the memory section of the system prompt: injects open tasks (todos, reminders with overdue labels), always-tagged knowledge, and describes the knowledge tier system.
+**`src/prompts/memory.py`** — Builds the memory section of the system prompt: injects all knowledge entries and all open tasks into every conversation.
 
 ### Memory system
 
-Two-tier persistent memory stored under `~/.agent-memories/`:
+Persistent memory stored under `~/.agent-memories/`:
 
 **`src/memory/__init__.py`** — Core storage layer:
-- **Low-level:** Full conversation logs as JSONL in `low/`.
-- **High-level:** Tagged markdown summaries in `high/` with YAML frontmatter (type, tags, knowledge_tag, owner, deadline, recurring, etc.).
-- Memory types: `memory`, `todo`, `reminder`, `job`.
-- Key functions: `save_conversation()`, `load_conversation()`, `list_conversations()`, `create_memory()`, `update_memory()`, `delete_memory()`, `search_memories()`, `create_job()`, `list_jobs()`, `toggle_job()`, `update_job_run()`.
-- `search_memories()` uses hybrid scoring (tag match + embedding similarity + keyword).
+- **Logs:** Full conversation logs as JSONL in `logs/`.
+- **Knowledge:** Tagged markdown entries in `knowledge/` with YAML frontmatter (id, tags, conversation_id, created, updated).
+- **Tasks:** Task files in `tasks/` with YAML frontmatter (id, tags, owner, created, updated, due, job). A single file can contain multiple checklist items.
+- **Archive:** Completed tasks and retired knowledge in `archive/`. Not injected into system prompt but searchable.
+- **Jobs:** Scheduled job definitions in `jobs/`.
+- Key functions: `save_conversation()`, `load_conversation()`, `list_conversations()`, `create_knowledge()`, `update_knowledge()`, `delete_knowledge()`, `search_knowledge()`, `create_task()`, `update_task()`, `complete_task_item()`, `archive_task()`, `archive_knowledge()`, `search_archive()`, `create_job()`, `list_jobs()`, `toggle_job()`.
+- `search_knowledge()` uses hybrid scoring (tag match + embedding similarity + keyword).
 
-**`src/memory/background.py`** — Async summarizer that converts conversations and user notes into long-term memories via LLM:
+**`src/memory/background.py`** — Async summarizer that converts conversations and user notes into knowledge/tasks via LLM:
 - `spawn_background()` / `spawn_note_background()` — fire-and-forget detached subprocess.
-- `process_conversation()` — classifies conversation content into memory/todo/reminder operations.
+- `process_conversation()` — classifies conversation content into knowledge/task operations.
 - `process_note()` — processes direct user notes (checkboxes, deadlines, facts).
 - Can run headlessly as `python -m memory.background <file.json>`.
 
@@ -95,7 +97,7 @@ Two-tier persistent memory stored under `~/.agent-memories/`:
 
 **`src/scheduler.py`** — Headless job runner:
 - Entry point: `python -m scheduler`. Processes all due jobs.
-- Jobs are stored as `.md` files in `~/.agent-memories/jobs/` (separate from memories in `high/`).
+- Jobs are stored as `.md` files in `~/.agent-memories/jobs/`.
 - Supports cron expressions (`0 9 * * *`) and ISO datetimes (one-shot).
 - PID-based lock file to prevent concurrent runs.
 - CLI flags: `--install-cron`, `--uninstall-cron`, `--show-cron`.
@@ -103,11 +105,11 @@ Two-tier persistent memory stored under `~/.agent-memories/`:
 ### Tools
 
 **`src/tools/`** — Tool definitions split into a package:
-- `__init__.py`: Aggregates all tools from submodules; exposes `tools`, `TOOL_MAPPING`, `TOOL_TO_TAG`, `CATEGORY_TAGS`, and `get_tools(names)`.
+- `__init__.py`: Aggregates all tools from submodules; exposes `tools`, `TOOL_MAPPING`, and `get_tools(names)`.
 - Each module exports `TAG`, `CATEGORY`, `tools` (JSON schemas), and `TOOL_MAPPING`.
 - `bash.py`: `bash` — sync. TAG=`shell`. Shell commands with safety blocklist, 30s timeout, output truncation.
 - `editor.py`: `text_editor` — sync. TAG=`editor`. File operations: `view`, `create`, `str_replace`, `insert`, `undo`.
-- `memory.py`: Memory tools — sync. TAG=`memory`. Search, read, create, update, and delete persistent memories.
+- `memory.py`: Memory tools — sync. TAG=`memory`. Knowledge CRUD, task CRUD, archive management, and search.
 - `monarch.py`: Monarch Money tools — async. TAG=`monarch`. Read-only financial tools via the `monarchmoney` library.
 - `scheduler.py`: Scheduler tools — sync. TAG=`scheduler`. Create, list, delete, and toggle scheduled jobs.
 
@@ -117,14 +119,6 @@ Two-tier persistent memory stored under `~/.agent-memories/`:
 2. Add `TAG = "mytag"` and `CATEGORY = "description"` constants.
 3. Define its JSON schema in a `tools` list and register it in a `TOOL_MAPPING` dict in that file.
 4. Import and merge into `src/tools/__init__.py` (add to the `_modules` list).
-
-### Knowledge tier
-
-Memories can have an optional `knowledge_tag` (stored as a separate field in frontmatter) for automatic injection:
-- `always` — full content injected into the system prompt at startup via `prompts/memory.py`.
-- Tool-category tags (`shell`, `editor`, `memory`, `monarch`, `scheduler`) — content prepended to the first tool result from that category per conversation, handled in `agent.py`'s `agent_loop`.
-
-The `knowledge_tag` is separate from descriptive `tags` — a memory can have both `tags: [finance, etrade]` and `knowledge_tag: monarch`.
 
 ### Selecting a subset of tools
 

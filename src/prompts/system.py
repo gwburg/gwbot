@@ -5,7 +5,7 @@ from datetime import datetime
 from .memory import build_memory_prompt
 
 
-def build_system_prompt(persona: str, tool_categories: list[str], category_tags: list[str] | None = None) -> str:
+def build_system_prompt(persona: str, tool_categories: list[str]) -> str:
     """Build a system prompt from a persona key and a list of tool categories."""
     base = SYSTEM_PROMPTS[persona]
     now = datetime.now()
@@ -20,7 +20,7 @@ def build_system_prompt(persona: str, tool_categories: list[str], category_tags:
         "your role — you are a general-purpose assistant that happens to have "
         "these capabilities."
     )
-    prompt += build_memory_prompt(category_tags=category_tags)
+    prompt += build_memory_prompt()
     return prompt
 
 
