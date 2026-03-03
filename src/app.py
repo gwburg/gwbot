@@ -257,11 +257,11 @@ class AgentApp(App):
         row = self.query_one("#input-row", Horizontal)
         row.remove()
         if text.strip() == "/clear":
-            self._clear_conversation()
+            self.run_worker(self._clear_conversation(), exclusive=True)
         else:
             self._submit_message(text)
 
-    def _clear_conversation(self) -> None:
+    async def _clear_conversation(self) -> None:
         """Save current conversation, reset state, and start fresh."""
         # Save current conversation in background
         if self._user_sent_message:
@@ -290,9 +290,9 @@ class AgentApp(App):
         status.cost_usd = 0.0
         status.context_pct = None
 
-        # Clear chat UI
+        # Clear chat UI — await so old widgets are fully removed before mounting new ones
         scroll = self.query_one("#chat-scroll", VerticalScroll)
-        scroll.remove_children()
+        await scroll.remove_children()
 
         self._append_widget(f"[{C_DIM}]── Context cleared ──[/]", classes="message")
         self._mount_input()
