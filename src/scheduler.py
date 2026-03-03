@@ -265,6 +265,7 @@ async def run_job(client, job: dict) -> None:
         "list_tags", "delete_tag",
         "list_scheduled_jobs", "toggle_scheduled_job", "delete_scheduled_job",
         "list_job_run_logs", "read_job_run_log",
+        "web_search", "fetch_url",
     ]
     job_tools, _ = get_tools(tool_names)
 
