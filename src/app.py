@@ -70,10 +70,11 @@ class AgentApp(App):
         Binding("alt+l", "focus_notes", "Notes", priority=True),
     ]
 
-    def __init__(self, model: str, system_prompt: str, max_iterations: int = 50, initial_note: bool = False, initial_resume: bool = False):
+    def __init__(self, model: str, persona: str, system_prompt: str, max_iterations: int = 50, initial_note: bool = False, initial_resume: bool = False):
         super().__init__()
         self.model_alias = model
         self.model_id = MODEL_MAP[model]
+        self.persona = persona
         self.system_prompt = system_prompt
         self.max_iterations = max_iterations
         self.initial_note = initial_note
@@ -255,7 +256,46 @@ class AgentApp(App):
             return
         row = self.query_one("#input-row", Horizontal)
         row.remove()
-        self._submit_message(text)
+        if text.strip() == "/clear":
+            self._clear_conversation()
+        else:
+            self._submit_message(text)
+
+    def _clear_conversation(self) -> None:
+        """Save current conversation, reset state, and start fresh."""
+        # Save current conversation in background
+        if self._user_sent_message:
+            try:
+                spawn_background(self.conversation_id, self.messages)
+            except Exception:
+                pass
+
+        # Rebuild system prompt with fresh knowledge/tasks
+        self.system_prompt = build_system_prompt(self.persona, tool_categories)
+
+        # Reset state
+        self.conversation_id = new_conversation_id()
+        self.messages = [{"role": "system", "content": self.system_prompt}]
+        self._streaming_parts = []
+        self._streaming_widget = None
+        self._is_running = False
+        self._spinner_widget = None
+        self._tool_widgets = []
+        self._has_agent_label = False
+        self._user_sent_message = False
+
+        # Reset status bar
+        status = self.query_one(StatusBar)
+        status.total_tokens = 0
+        status.cost_usd = 0.0
+        status.context_pct = None
+
+        # Clear chat UI
+        scroll = self.query_one("#chat-scroll", VerticalScroll)
+        scroll.remove_children()
+
+        self._append_widget(f"[{C_DIM}]── Context cleared ──[/]", classes="message")
+        self._mount_input()
 
     async def _fetch_credits(self) -> None:
         import asyncio
@@ -475,6 +515,7 @@ def main():
 
     app = AgentApp(
         model=args.model,
+        persona=args.persona,
         system_prompt=system_prompt,
         max_iterations=args.max_iterations,
         initial_note=args.note,

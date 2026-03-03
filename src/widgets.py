@@ -137,6 +137,10 @@ class SubmittableTextArea(TextArea):
                 self.post_message(self.Submitted(text))
                 self.load_text("")
 
+    def _on_change(self, _event=None) -> None:
+        """Keep the input visible when text wraps to new lines."""
+        self.call_after_refresh(self.scroll_visible, animate=False)
+
 
 class NoteInput(SubmittableTextArea):
     """SubmittableTextArea used in the notes pane."""
