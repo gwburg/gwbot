@@ -79,7 +79,8 @@ Persistent memory stored under `~/.agent-memories/`:
 - **Tasks:** Task files in `tasks/` with YAML frontmatter (id, tags, owner, created, updated, due, job). A single file can contain multiple checklist items.
 - **Archive:** Completed tasks and retired knowledge in `archive/`. Not injected into system prompt but searchable.
 - **Jobs:** Scheduled job definitions in `jobs/`.
-- Key functions: `save_conversation()`, `load_conversation()`, `list_conversations()`, `create_knowledge()`, `update_knowledge()`, `delete_knowledge()`, `search_knowledge()`, `create_task()`, `update_task()`, `complete_task_item()`, `archive_task()`, `archive_knowledge()`, `search_archive()`, `create_job()`, `list_jobs()`, `toggle_job()`.
+- **Job logs:** Markdown run logs from scheduler job executions in `job-logs/`. Auto-cleaned to keep last 10 per job.
+- Key functions: `save_conversation()`, `load_conversation()`, `list_conversations()`, `create_knowledge()`, `update_knowledge()`, `delete_knowledge()`, `search_knowledge()`, `create_task()`, `update_task()`, `complete_task_item()`, `archive_task()`, `archive_knowledge()`, `search_archive()`, `create_job()`, `list_jobs()`, `toggle_job()`, `save_job_log()`, `list_job_logs()`, `read_job_log()`, `cleanup_job_logs()`.
 - `search_knowledge()` uses hybrid scoring (tag match + embedding similarity + keyword).
 
 **`src/memory/background.py`** — Async summarizer that converts conversations and user notes into knowledge/tasks via LLM:
@@ -101,6 +102,7 @@ Persistent memory stored under `~/.agent-memories/`:
 - Supports cron expressions (`0 9 * * *`) and ISO datetimes (one-shot).
 - PID-based lock file to prevent concurrent runs.
 - CLI flags: `--install-cron`, `--uninstall-cron`, `--show-cron`.
+- `JobRunLogger`: Captures all `AgentEvent`s during a job run and writes a Markdown log to `~/.agent-memories/job-logs/`. Includes assistant messages, tool calls/results, token usage, warnings, and a summary with duration/cost/iteration count.
 
 ### Tools
 
@@ -111,7 +113,7 @@ Persistent memory stored under `~/.agent-memories/`:
 - `editor.py`: `text_editor` — sync. TAG=`editor`. File operations: `view`, `create`, `str_replace`, `insert`, `undo`.
 - `memory.py`: Memory tools — sync. TAG=`memory`. Knowledge CRUD, task CRUD, archive management, and search.
 - `monarch.py`: Monarch Money tools — async. TAG=`monarch`. Read-only financial tools via the `monarchmoney` library.
-- `scheduler.py`: Scheduler tools — sync. TAG=`scheduler`. Create, list, delete, and toggle scheduled jobs.
+- `scheduler.py`: Scheduler tools — sync. TAG=`scheduler`. Create, list, delete, toggle scheduled jobs, and read job run logs.
 
 ### Adding a new tool
 

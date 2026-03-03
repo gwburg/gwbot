@@ -1,6 +1,8 @@
 """Scheduler tools — create, list, and manage timed background jobs."""
 
-from memory import create_job, delete_job, list_jobs, toggle_job
+import json
+
+from memory import create_job, delete_job, list_job_logs, list_jobs, read_job_log, toggle_job
 
 TAG = "scheduler"
 CATEGORY = "Scheduler — create, list, and manage scheduled background jobs"
@@ -58,6 +60,19 @@ def toggle_scheduled_job(job_id: str, enabled: bool) -> str:
         return f"Job {job_id} is now {state}"
     except FileNotFoundError:
         return f"Error: job '{job_id}' not found"
+
+
+def list_job_run_logs(job_id: str | None = None) -> str:
+    """List available job run logs, optionally filtered by job ID."""
+    logs = list_job_logs(job_id)
+    if not logs:
+        return "No job run logs found."
+    return json.dumps(logs, indent=2)
+
+
+def read_job_run_log(filename: str) -> str:
+    """Read a job run log by its filename."""
+    return read_job_log(filename)
 
 
 tools = [
@@ -148,6 +163,45 @@ tools = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_job_run_logs",
+            "description": (
+                "List available job run logs showing when each job ran, "
+                "how large the log is, etc. Optionally filter by job ID."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_id": {
+                        "type": "string",
+                        "description": "Optional. Filter logs by this job ID.",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_job_run_log",
+            "description": (
+                "Read the full content of a job run log. "
+                "Use list_job_run_logs first to find the filename."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "The log filename (e.g. 'abc123_20260303_060000.md').",
+                    },
+                },
+                "required": ["filename"],
+            },
+        },
+    },
 ]
 
 TOOL_MAPPING = {
@@ -155,4 +209,6 @@ TOOL_MAPPING = {
     "list_scheduled_jobs": list_scheduled_jobs,
     "delete_scheduled_job": delete_scheduled_job,
     "toggle_scheduled_job": toggle_scheduled_job,
+    "list_job_run_logs": list_job_run_logs,
+    "read_job_run_log": read_job_run_log,
 }
