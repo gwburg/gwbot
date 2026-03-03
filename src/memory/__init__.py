@@ -22,6 +22,7 @@ _TASKS_DIR = _BASE_DIR / "tasks"
 _ARCHIVE_DIR = _BASE_DIR / "archive"
 _LOGS_DIR = _BASE_DIR / "logs"
 _JOBS_DIR = _BASE_DIR / "jobs"
+_JOB_LOGS_DIR = _BASE_DIR / "job-logs"
 _TAGS_FILE = _BASE_DIR / "tags.yaml"
 
 
@@ -37,6 +38,7 @@ def ensure_dirs() -> None:
     _ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
     _LOGS_DIR.mkdir(parents=True, exist_ok=True)
     _JOBS_DIR.mkdir(parents=True, exist_ok=True)
+    _JOB_LOGS_DIR.mkdir(parents=True, exist_ok=True)
     if not _TAGS_FILE.exists():
         _TAGS_FILE.write_text(yaml.dump([]))
 
@@ -492,6 +494,70 @@ def update_job_run(job_id: str) -> dict:
 def toggle_job(job_id: str, enabled: bool) -> dict:
     """Enable or disable a job."""
     return _update_job(job_id, enabled=enabled)
+
+
+# ---------------------------------------------------------------------------
+# Job run logs
+# ---------------------------------------------------------------------------
+
+
+def save_job_log(job_id: str, content: str) -> Path:
+    """Save a job run log and return the file path.
+
+    Filename: {job_id}_{YYYYMMDD_HHMMSS}.md
+    """
+    ensure_dirs()
+    now = datetime.now(timezone.utc)
+    filename = f"{job_id}_{now.strftime('%Y%m%d_%H%M%S')}.md"
+    path = _JOB_LOGS_DIR / filename
+    path.write_text(content)
+    return path
+
+
+def list_job_logs(job_id: str | None = None) -> list[dict]:
+    """List job run logs, optionally filtered by job_id. Newest first."""
+    ensure_dirs()
+    results = []
+    for path in sorted(_JOB_LOGS_DIR.glob("*.md"), reverse=True):
+        stem = path.stem  # e.g. "abc123_20260303_060000"
+        parts = stem.rsplit("_", 2)
+        if len(parts) < 3:
+            continue
+        log_job_id = parts[0]
+        if job_id and log_job_id != job_id:
+            continue
+        stat = path.stat()
+        results.append({
+            "filename": path.name,
+            "job_id": log_job_id,
+            "date": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+            "size_bytes": stat.st_size,
+        })
+    return results
+
+
+def read_job_log(filename: str) -> str:
+    """Read a job run log by filename."""
+    path = _JOB_LOGS_DIR / filename
+    if not path.exists():
+        return f"Error: job log '{filename}' not found"
+    return path.read_text()
+
+
+def cleanup_job_logs(job_id: str, keep: int = 10) -> int:
+    """Remove old job logs, keeping only the most recent `keep` per job.
+
+    Returns the number of files removed.
+    """
+    logs = list_job_logs(job_id)
+    to_remove = logs[keep:]  # already sorted newest-first
+    for log in to_remove:
+        path = _JOB_LOGS_DIR / log["filename"]
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+    return len(to_remove)
 
 
 # ---------------------------------------------------------------------------
