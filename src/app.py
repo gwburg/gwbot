@@ -372,6 +372,7 @@ class AgentApp(App):
                 status.total_tokens = e.total_prompt_tokens + e.total_completion_tokens
                 status.cost_usd = e.cost_usd
                 status.context_pct = e.context_pct
+                self.run_worker(self._fetch_credits(), exclusive=False, group="credits")
 
             case WarningEvent(message=msg):
                 self._append_widget(f"[{C_WARN}]\\[warning][/] {msg}")
