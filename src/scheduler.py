@@ -30,7 +30,7 @@ load_dotenv()
 _LOCK_FILE = _BASE_DIR / ".scheduler.lock"
 _LOG_FILE = _BASE_DIR / ".scheduler.log"
 
-_JOB_MODEL = models.SONNET
+_JOB_MODEL = models.OPUS
 
 logging.basicConfig(
     filename=str(_LOG_FILE),
@@ -131,6 +131,7 @@ async def run_job(client, job: dict) -> None:
         "create_task", "update_task", "complete_task", "read_task", "list_tasks",
         "list_tags", "delete_tag",
         "list_scheduled_jobs", "toggle_scheduled_job", "delete_scheduled_job",
+        "web_search", "fetch_url",
     ]
     job_tools, _ = get_tools(tool_names)
 
