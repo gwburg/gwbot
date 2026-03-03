@@ -124,9 +124,14 @@ async def run_job(client, job: dict) -> None:
 
     log.info("Running job %s: %.80s", job_id, prompt)
 
-    tool_names = ["bash", "text_editor", "search_knowledge", "read_knowledge",
-                  "create_knowledge", "update_knowledge", "delete_knowledge",
-                  "create_task", "update_task", "complete_task", "read_task"]
+    tool_names = [
+        "bash", "text_editor",
+        "search_knowledge", "read_knowledge", "create_knowledge", "update_knowledge",
+        "delete_knowledge", "archive_knowledge", "search_archive",
+        "create_task", "update_task", "complete_task", "read_task", "list_tasks",
+        "list_tags", "delete_tag",
+        "list_scheduled_jobs", "toggle_scheduled_job", "delete_scheduled_job",
+    ]
     job_tools, _ = get_tools(tool_names)
 
     messages = [
