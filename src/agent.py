@@ -3,7 +3,6 @@ import inspect
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Callable
 
 import openai
@@ -157,6 +156,27 @@ def _emit(on_event: Callable | None, event: AgentEvent):
         on_event(event)
 
 
+# Number of recent tool results to keep in full; older ones get truncated.
+_KEEP_RECENT_TOOL_RESULTS = 6
+_TRUNCATED_MAX_CHARS = 200
+
+
+def _prune_old_tool_results(messages: list[dict]) -> None:
+    """Truncate old tool result content in-place to save tokens.
+
+    Keeps the most recent _KEEP_RECENT_TOOL_RESULTS tool messages intact.
+    Older tool results are replaced with a short summary.
+    """
+    tool_indices = [i for i, m in enumerate(messages) if m.get("role") == "tool"]
+    to_truncate = tool_indices[:-_KEEP_RECENT_TOOL_RESULTS] if len(tool_indices) > _KEEP_RECENT_TOOL_RESULTS else []
+
+    for i in to_truncate:
+        content = messages[i].get("content", "")
+        if len(content) > _TRUNCATED_MAX_CHARS:
+            preview = content[:_TRUNCATED_MAX_CHARS]
+            messages[i]["content"] = f"{preview}\n[truncated — {len(content)} chars total]"
+
+
 async def agent_loop(client, model, messages, tools, max_iterations=50, on_event: Callable[[AgentEvent], None] | None = None):
     model_info = await asyncio.to_thread(fetch_model_info, model)
     context_length = model_info["context_length"]
@@ -165,6 +185,7 @@ async def agent_loop(client, model, messages, tools, max_iterations=50, on_event
     total_completion_tokens = 0
 
     for _ in range(max_iterations):
+        _prune_old_tool_results(messages)
         content, tool_calls, usage = await call_llm(client, model, messages, tools, on_event=on_event)
 
         # Build message dict for history
@@ -308,9 +329,8 @@ async def execute_tool(tool_call: dict) -> dict:
     except Exception as e:
         tool_output = f"Error calling '{name}': {e}"
 
-    ts = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
     return {
         "role": "tool",
         "tool_call_id": tool_call["id"],
-        "content": f"{ts}\n{tool_output}",
+        "content": tool_output,
     }
