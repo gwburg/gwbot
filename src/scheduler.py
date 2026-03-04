@@ -259,10 +259,8 @@ async def run_job(client, job: dict) -> None:
 
     tool_names = [
         "bash", "text_editor",
-        "search_knowledge", "read_knowledge", "create_knowledge", "update_knowledge",
-        "delete_knowledge", "archive_knowledge", "search_archive",
-        "create_task", "update_task", "complete_task", "read_task", "list_tasks",
-        "list_tags", "delete_tag",
+        "search_knowledge", "create_knowledge", "archive_knowledge", "search_archive",
+        "create_task", "complete_task",
         "list_scheduled_jobs", "toggle_scheduled_job", "delete_scheduled_job",
         "list_job_run_logs", "read_job_run_log",
         "web_search", "fetch_url",

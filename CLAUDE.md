@@ -111,7 +111,7 @@ Persistent memory stored under `~/.agent-memories/`:
 - Each module exports `TAG`, `CATEGORY`, `tools` (JSON schemas), and `TOOL_MAPPING`.
 - `bash.py`: `bash` — sync. TAG=`shell`. Shell commands with safety blocklist, 30s timeout, output truncation.
 - `editor.py`: `text_editor` — sync. TAG=`editor`. File operations: `view`, `create`, `str_replace`, `insert`, `undo`.
-- `memory.py`: Memory tools — sync. TAG=`memory`. Knowledge CRUD, task CRUD, archive management, and search.
+- `memory.py`: Memory tools — sync. TAG=`memory`. `search_knowledge`, `create_knowledge`, `create_task`, `complete_task`, `search_archive`, `archive_knowledge`. Reading/updating entries is done via `text_editor`.
 - `monarch.py`: Monarch Money tools — async. TAG=`monarch`. Read-only financial tools via the `monarchmoney` library.
 - `scheduler.py`: Scheduler tools — sync. TAG=`scheduler`. Create, list, delete, toggle scheduled jobs, and read job run logs.
 

@@ -97,12 +97,12 @@ def run_init() -> None:
             from memory import create_job
             _REVIEW_PROMPT = (
                 "Review all stored knowledge and tasks for quality, relevance and hidden insights\n\n"
-                "1. Use search_knowledge (empty query) to list everything, and list_tasks.\n"
-                "2. Use read_knowledge / read_task on any that look outdated, contradictory, "
-                "or redundant OR of interest relative to other entries or jobs\n"
+                "1. Use search_knowledge (empty query) to list everything.\n"
+                "2. Use text_editor to view any entries that look outdated, contradictory, "
+                "or redundant OR of interest relative to other entries or jobs.\n"
                 "3. Rules:\n"
                 "   - Only act if there is a clear, tangible benefit. Otherwise do nothing.\n"
-                "   - You may update or delete knowledge that is outdated, contradictory, or redundant.\n"
+                "   - You may edit knowledge files directly with text_editor, or archive outdated entries.\n"
                 "   - Archive knowledge that is no longer relevant.\n"
                 "   - You may create new knowledge or tasks if cross-referencing reveals "
                 "a genuinely useful action item or deadline the user would benefit from.\n"
