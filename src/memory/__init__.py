@@ -128,6 +128,72 @@ def list_conversations(limit: int = 0, offset: int = 0) -> list[dict]:
     return results[offset:]
 
 
+def search_conversations(query: str, max_results: int = 5) -> list[dict]:
+    """Search conversation logs for messages matching a query string.
+
+    Searches user and assistant message content (case-insensitive substring).
+    Returns a list of dicts with conversation id, date, role, and a snippet
+    of the matching content with context around the match.
+
+    Args:
+        query: Search string (case-insensitive).
+        max_results: Maximum number of matching messages to return.
+
+    Returns:
+        List of dicts: {id, date, role, snippet}
+    """
+    ensure_dirs()
+    query_lower = query.lower()
+    results = []
+
+    for path in sorted(_LOGS_DIR.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True):
+        if len(results) >= max_results:
+            break
+        mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        date_str = mtime.strftime("%Y-%m-%d %H:%M")
+
+        for line in path.read_text().splitlines():
+            if len(results) >= max_results:
+                break
+            if not line.strip():
+                continue
+            try:
+                msg = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            role = msg.get("role", "")
+            # Only search user and assistant messages (skip tool results — too noisy)
+            if role not in ("user", "assistant"):
+                continue
+
+            content = msg.get("content", "") or ""
+            if not content:
+                continue
+
+            idx = content.lower().find(query_lower)
+            if idx == -1:
+                continue
+
+            # Build a snippet: up to 200 chars centered around the match
+            snippet_start = max(0, idx - 80)
+            snippet_end = min(len(content), idx + len(query) + 120)
+            snippet = content[snippet_start:snippet_end]
+            if snippet_start > 0:
+                snippet = "..." + snippet
+            if snippet_end < len(content):
+                snippet = snippet + "..."
+
+            results.append({
+                "id": path.stem,
+                "date": date_str,
+                "role": role,
+                "snippet": snippet,
+            })
+
+    return results
+
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------

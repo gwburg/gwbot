@@ -9,6 +9,7 @@ from memory import (
     create_knowledge as _create_knowledge,
     create_task as _create_task,
     search_archive as _search_archive,
+    search_conversations as _search_conversations,
     search_knowledge as _search_knowledge,
 )
 
@@ -71,6 +72,13 @@ def archive_knowledge(knowledge_id: str) -> str:
     except FileNotFoundError as e:
         return str(e)
     return f"Knowledge '{knowledge_id}' moved to archive."
+
+
+def search_conversations(query: str, max_results: int = 5) -> str:
+    results = _search_conversations(query=query, max_results=max_results)
+    if not results:
+        return "No matching conversations found."
+    return json.dumps(results, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +234,32 @@ tools = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_conversations",
+            "description": (
+                "Search past conversation logs for messages matching a query. "
+                "Searches user and assistant messages (case-insensitive). "
+                "Returns conversation ID, date, role, and a snippet for each match."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search string to look for in conversation history",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum number of results to return (default 5, max 20)",
+                        "default": 5,
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
 ]
 
 
@@ -236,4 +270,5 @@ TOOL_MAPPING = {
     "complete_task": complete_task,
     "search_archive": search_archive,
     "archive_knowledge": archive_knowledge,
+    "search_conversations": search_conversations,
 }
