@@ -112,8 +112,6 @@ class AgentApp(App):
         self._note_queue: list[str] = []
         self._note_processing = False
 
-        # Fire-and-forget: run scheduler to catch overdue jobs
-        self._spawn_scheduler()
         self.run_worker(self._fetch_credits(), exclusive=False, group="credits")
 
         if self.initial_resume:
@@ -301,20 +299,6 @@ class AgentApp(App):
         if credits is not None:
             self.query_one(StatusBar).credits_remaining = credits
 
-    def _spawn_scheduler(self) -> None:
-        """Spawn the scheduler as a detached subprocess to catch overdue jobs."""
-        import subprocess as _sp
-        try:
-            _sp.Popen(
-                [sys.executable, "-m", "scheduler"],
-                cwd=os.path.join(os.path.dirname(__file__)),
-                start_new_session=True,
-                stdin=_sp.DEVNULL,
-                stdout=_sp.DEVNULL,
-                stderr=_sp.DEVNULL,
-            )
-        except Exception:
-            logging.getLogger(__name__).debug("scheduler spawn failed", exc_info=True)
 
     def _submit_message(self, text: str) -> None:
         if self._is_running:
