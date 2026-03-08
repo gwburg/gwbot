@@ -254,6 +254,7 @@ async def run_job(client, job: dict) -> None:
     job_id = job["id"]
     prompt = job.get("content", "")
     max_iter = job.get("max_iterations", 5)
+    model = job.get("model", _JOB_MODEL)
 
     log.info("Running job %s: %.80s", job_id, prompt)
 
@@ -277,11 +278,11 @@ async def run_job(client, job: dict) -> None:
     ]
 
     # Set up run logger to capture all agent events
-    run_logger = JobRunLogger(job_id, prompt, _JOB_MODEL)
+    run_logger = JobRunLogger(job_id, prompt, model)
 
     await agent_loop(
         client,
-        _JOB_MODEL,
+        model,
         messages,
         job_tools,
         max_iterations=max_iter,
