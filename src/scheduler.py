@@ -32,7 +32,7 @@ load_dotenv()
 _LOCK_FILE = _BASE_DIR / ".scheduler.lock"
 _LOG_FILE = _BASE_DIR / ".scheduler.log"
 
-_JOB_MODEL = models.OPUS
+_JOB_MODEL = models.SONNET
 
 logging.basicConfig(
     filename=str(_LOG_FILE),
